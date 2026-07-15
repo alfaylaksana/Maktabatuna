@@ -4042,3 +4042,1703 @@ function tambahHalamanDaftarKode(data = {}) {
       document.getElementById('modalPindahHalaman').style.display = 'none';
       document.getElementById('modalBoxPindahHalaman').style.display = 'none';
     }
+
+    // ── Modal Gabung JSON ─────────────────────────────────────────
+    let _gbData = null;
+    let _gbPosisi = 'akhir';
+
+    function bukaModalGabung() {
+      _gbData = null;
+      _gbPosisi = 'akhir';
+      document.getElementById('labelGabungFile').childNodes[0].textContent = 'Ketuk untuk pilih file JSON';
+      document.getElementById('gbInfo').style.display = 'none';
+      document.getElementById('gbError').style.display = 'none';
+      document.getElementById('gbBtnOk').disabled = true;
+      document.getElementById('gbInputNomor').style.display = 'none';
+      document.getElementById('gbInputNomor').value = '';
+      ['akhir','awal','nomor'].forEach(p => {
+        const b = document.getElementById('gbBtn-' + p);
+        b.style.background = p === 'akhir' ? '#2d6a4f' : '#f5f5f0';
+        b.style.color = p === 'akhir' ? '#ffffff' : '#2d6a4f';
+        b.style.fontWeight = p === 'akhir' ? 'bold' : 'normal';
+      });
+      document.getElementById('modalGabung').style.display = 'block';
+      document.getElementById('modalBoxGabung').style.display = 'block';
+    }
+
+    function tutupModalGabung() {
+      document.getElementById('modalGabung').style.display = 'none';
+      document.getElementById('modalBoxGabung').style.display = 'none';
+    }
+
+    // ── Lompat dari Hasil ke field Input terkait ───────────────────
+    let _posisiScrollHasil = null;
+
+    // ── Rich Text Editor (RTE) reusable ─────────────────────────────
+    // Membuat markup toolbar + editor contenteditable.
+    // existingHTML: konten awal (HTML). placeholder: teks placeholder.
+    // rtl: true jika arah teks kanan-ke-kiri.
+    function buatRTE(className, existingHTML, placeholder, rtl) {
+      const dirAttr = rtl ? ' dir="auto"' : '';
+      return `
+      <div class="rte-wrap">
+        <div class="rte-toolbar">
+          <button type="button" data-cmd="bold" onclick="rteExec(this,'bold')" title="Tebal"><b>B</b></button>
+          <button type="button" data-cmd="italic" onclick="rteExec(this,'italic')" title="Miring"><i>I</i></button>
+          <button type="button" data-cmd="underline" onclick="rteExec(this,'underline')" title="Garis bawah"><u>U</u></button>
+          <span class="rte-pemisah"></span>
+          <button type="button" data-cmd="justifyLeft" onclick="rteExec(this,'justifyLeft')" title="Rata Kiri">⇤</button>
+          <button type="button" data-cmd="justifyCenter" onclick="rteExec(this,'justifyCenter')" title="Rata Tengah">⇔</button>
+          <button type="button" data-cmd="justifyRight" onclick="rteExec(this,'justifyRight')" title="Rata Kanan">⇥</button>
+          <button type="button" data-cmd="justifyFull" onclick="rteExec(this,'justifyFull')" title="Rata Kiri-Kanan">☰</button>
+          <select class="rte-size" onchange="rteSetSize(this)" title="Ukuran teks">
+            <option value="">Ukuran</option>
+            <option value="11px">Kecil</option>
+            <option value="13px">Sedang</option>
+            <option value="16px">Besar</option>
+            <option value="20px">Sangat Besar</option>
+          </select>
+        </div>
+        <div class="rte-editor ${className}" contenteditable="true" data-placeholder="${placeholder}"${dirAttr} style="text-align:left;" oninput="rteBersihkanJikaKosong(this); simpan()">${existingHTML || ''}</div>
+      </div>`;
+    }
+
+    function rteBersihkanJikaKosong(editor) {
+      const teksPolos = editor.innerHTML.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, '').trim();
+      if (!teksPolos && editor.innerHTML !== '') {
+        editor.innerHTML = '';
+      }
+    }
+
+    // Simpan seleksi saat editor blur (karena klik tombol toolbar menghilangkan fokus)
+    let _savedRange = null;
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && !sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        // Hanya simpan jika seleksi ada di dalam .rte-editor
+        const editor = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer.closest('.rte-editor')
+          : range.commonAncestorContainer.parentElement?.closest('.rte-editor');
+        if (editor) _savedRange = { range: range.cloneRange(), editor };
+      }
+    });
+
+    function _restoreSelection() {
+      if (!_savedRange) return false;
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(_savedRange.range);
+      _savedRange.editor.focus();
+      return true;
+    }
+
+    function rteExec(btn, cmd) {
+      const editor = btn.closest('.rte-wrap').querySelector('.rte-editor');
+      _restoreSelection();
+      editor.focus();
+      const petaRata = { justifyLeft: 'left', justifyCenter: 'center', justifyRight: 'right', justifyFull: 'justify' };
+      if (cmd in petaRata) {
+        // execCommand untuk perataan tidak konsisten di semua browser (terutama Kiwi/Android),
+        // jadi bungkus isi editor dalam satu wrapper ber-style agar tersimpan di dalam konten.
+        rteSetRata(editor, petaRata[cmd]);
+        const toolbar = btn.closest('.rte-toolbar');
+        if (toolbar) {
+          toolbar.querySelectorAll('button[data-cmd^="justify"]').forEach(b => b.classList.remove('rte-aktif'));
+          btn.classList.add('rte-aktif');
+        }
+      } else {
+        document.execCommand(cmd, false, null);
+      }
+      simpan();
+    }
+
+    function rteSetRata(editor, rata) {
+      let wrapper = editor.firstElementChild;
+      const sudahWrapper = wrapper && wrapper.classList.contains('rte-rata-wrap') && editor.children.length === 1;
+      if (sudahWrapper) {
+        wrapper.style.textAlign = rata;
+      } else {
+        const frag = document.createDocumentFragment();
+        while (editor.firstChild) frag.appendChild(editor.firstChild);
+        wrapper = document.createElement('div');
+        wrapper.className = 'rte-rata-wrap';
+        wrapper.style.textAlign = rata;
+        wrapper.appendChild(frag);
+        editor.appendChild(wrapper);
+      }
+    }
+
+    function rteSetSize(sel) {
+      const ukuran = sel.value;
+      if (!ukuran) return;
+      const editor = sel.closest('.rte-wrap').querySelector('.rte-editor');
+      // Kembalikan seleksi sebelum eksekusi
+      const restored = _restoreSelection();
+      if (!restored) { editor.focus(); }
+      // Gunakan span dengan font-size karena execCommand fontSize terbatas (hanya 1-7)
+      const sel2 = window.getSelection();
+      if (sel2.rangeCount && !sel2.isCollapsed) {
+        const range = sel2.getRangeAt(0);
+        const span = document.createElement('span');
+        span.style.fontSize = ukuran;
+        try {
+          range.surroundContents(span);
+        } catch(e) {
+          // Jika seleksi melintasi banyak elemen, fallback: bungkus isi range
+          const frag = range.extractContents();
+          span.appendChild(frag);
+          range.insertNode(span);
+        }
+      }
+      sel.value = '';
+      _savedRange = null;
+      simpan();
+    }
+    // ─────────────────────────────────────────────────────────────
+
+    function lompatKeInput(srcId) {
+      if (!srcId) return;
+      const target = document.getElementById(srcId);
+      if (!target) { alert('Baris input tidak ditemukan (mungkin sudah dihapus/diubah).'); return; }
+
+      // Simpan posisi scroll saat ini supaya bisa kembali persis ke tempat semula
+      _posisiScrollHasil = window.scrollY;
+
+      // Tentukan field utama untuk difokuskan: arab-input (bab biasa) atau s-arab (syiir)
+      let field = target.querySelector('.arab-input') || target.querySelector('.s-arab');
+      const elScroll = field || target;
+
+      elScroll.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Highlight kedip kuning sebentar
+      target.classList.add('highlight-kedip');
+      setTimeout(() => target.classList.remove('highlight-kedip'), 1800);
+
+      // Fokus ke field setelah scroll selesai
+      setTimeout(() => { if (field) field.focus(); }, 400);
+
+      tampilkanTombolKembali();
+    }
+
+    function tampilkanTombolKembali() {
+      let btn = document.getElementById('btnKembaliHasil');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'btnKembaliHasil';
+        btn.textContent = '↩ Kembali ke Hasil';
+        btn.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:9999;background:#2d6a4f;color:#ffffff;border:1.5px solid #2d6a4f;border-radius:24px;padding:10px 18px;font-size:13px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;';
+        btn.onclick = kembaliKeHasil;
+        document.body.appendChild(btn);
+      }
+      btn.style.display = 'block';
+    }
+
+    function kembaliKeHasil() {
+      const btn = document.getElementById('btnKembaliHasil');
+      if (btn) btn.style.display = 'none';
+      if (_posisiScrollHasil !== null) {
+        window.scrollTo({ top: _posisiScrollHasil, behavior: 'smooth' });
+      } else {
+        document.getElementById('hasil')?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    // ─────────────────────────────────────────────────────────────
+
+    function pilihPosisiGabung(btn) {
+      _gbPosisi = btn.dataset.pos;
+      ['akhir','awal','nomor'].forEach(p => {
+        const b = document.getElementById('gbBtn-' + p);
+        const aktif = p === _gbPosisi;
+        b.style.background = aktif ? '#2d6a4f' : '#f5f5f0';
+        b.style.color = aktif ? '#ffffff' : '#2d6a4f';
+        b.style.fontWeight = aktif ? 'bold' : 'normal';
+      });
+      document.getElementById('gbInputNomor').style.display = _gbPosisi === 'nomor' ? 'block' : 'none';
+      updateGbInfo();
+    }
+
+    function pilihFileGabung(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (Array.isArray(data)) {
+            _gbData = data;
+          } else if (data.halamanList && Array.isArray(data.halamanList)) {
+            _gbData = data.halamanList;
+          } else {
+            tampilGbError('Format JSON tidak dikenali.');
+            return;
+          }
+          document.getElementById('labelGabungFile').childNodes[0].textContent = 'tck ' + file.name;
+          document.getElementById('gbError').style.display = 'none';
+          document.getElementById('gbBtnOk').disabled = false;
+          updateGbInfo();
+        } catch {
+          tampilGbError('File tidak valid!');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function updateGbInfo() {
+      if (!_gbData) return;
+      const infoEl = document.getElementById('gbInfo');
+      const total = document.querySelectorAll('.halaman-input').length;
+      const tambah = _gbData.length;
+      let teks = '';
+      if (_gbPosisi === 'akhir') teks = total + ' hlm + ' + tambah + ' hlm tambahan = ' + (total+tambah) + ' hlm. Disisipkan di akhir.';
+      else if (_gbPosisi === 'awal') teks = total + ' hlm + ' + tambah + ' hlm tambahan = ' + (total+tambah) + ' hlm. Disisipkan di awal.';
+      else {
+        const n = document.getElementById('gbInputNomor').value || '?';
+        teks = total + ' hlm + ' + tambah + ' hlm tambahan = ' + (total+tambah) + ' hlm. Disisipkan setelah hlm ke-' + n + '.';
+      }
+      infoEl.textContent = teks;
+      infoEl.style.display = 'block';
+    }
+
+    function tampilGbError(pesan) {
+      const el = document.getElementById('gbError');
+      el.textContent = 'tprs ' + pesan;
+      el.style.display = 'block';
+    }
+
+    function eksekusiGabung() {
+      if (!_gbData) return;
+      document.getElementById('gbError').style.display = 'none';
+      muatDB().then(dataUtama => {
+        if (!dataUtama) { tampilGbError('Data utama tidak ditemukan!'); return; }
+        const halamanUtama = [...(dataUtama.halamanList || [])];
+        let halamanBaru;
+        if (_gbPosisi === 'akhir') {
+          halamanBaru = [...halamanUtama, ..._gbData];
+        } else if (_gbPosisi === 'awal') {
+          halamanBaru = [..._gbData, ...halamanUtama];
+        } else {
+          const n = parseInt(document.getElementById('gbInputNomor').value);
+          if (!n || n < 1 || n > halamanUtama.length) {
+            tampilGbError('Nomor halaman tidak valid!'); return;
+          }
+          halamanBaru = [...halamanUtama.slice(0, n), ..._gbData, ...halamanUtama.slice(n)];
+        }
+        const dataGabung = { ...dataUtama, halamanList: halamanBaru };
+        simpanDB(dataGabung).then(() => {
+          tutupModalGabung();
+          location.reload();
+        }).catch(() => tampilGbError('Gagal menyimpan!'));
+      });
+    }
+    // ─────────────────────────────────────────────────────────────
+
+    function konfirmasiPindahHalaman() {
+      const semua = [...document.querySelectorAll('.halaman-input')];
+      const total = semua.length;
+      const posAktif = halamanAktifId ? semua.findIndex(h => h.id === halamanAktifId) : -1;
+      const ke = parseInt(document.getElementById('inputKe').value) - 1;
+      if (posAktif === -1) {
+        alert('Halaman aktif tidak terdeteksi. Scroll ke halaman dulu.');
+        return;
+      }
+      if (isNaN(ke) || ke < 0 || ke >= total) {
+        alert(`Masukkan angka antara 1 sampai ${total}.`);
+        return;
+      }
+      if (ke === posAktif) {
+        tutupModalPindahHalaman();
+        return;
+      }
+      const container = document.getElementById('containerHalaman');
+      const elPindah = semua[posAktif];
+      const elTarget = semua[ke];
+      if (ke < posAktif) {
+        container.insertBefore(elPindah, elTarget);
+      } else {
+        container.insertBefore(elPindah, elTarget.nextSibling);
+      }
+      updateNavInput();
+      tutupModalPindahHalaman();
+    }
+
+    function hapusHalaman(id) {
+      if (confirm('Yakin ingin menghapus halaman ini beserta semua isinya?')) {
+        document.getElementById(id)?.remove();
+        updateNavInput();
+        updateTombolHalamanTetap();
+      }
+    }
+
+    function tambahBab(halamanId, namaBab = '', kataList = [], babJudulIndo = '', babJudulJawa = '', babNomor = '') {
+      const id = babCounter++;
+      const container = document.getElementById('containerBab-' + halamanId);
+      if (!container) return;
+      const div = document.createElement('div');
+      div.className = 'bab-input';
+      div.id = 'bab-' + id;
+      div.innerHTML = `
+  <div class="bab-header">
+    <span class="bab-label">Bab</span>
+    <div class="bab-aksi">
+  <button class="btn-gabung-bab" onclick="gabungBab('bab-${id}')">⊕ Gabung</button>
+  <button class="btn-pindah-bab" onclick="bukaPindahBab('bab-${id}')">⇄ Pindah</button>
+  <button class="btn-hapus-bab"  onclick="hapusBab('bab-${id}')">Hapus Bab</button>
+  </div>
+  <div class="bab-judul-grid">
+    <input class="bab-nama-input" type="text" placeholder="عنوان الباب بالعربية" value="${namaBab}" style="direction:rtl;font-size:18px;" />
+    <input class="bab-judul-indo" type="text" placeholder="Terjemah Indonesia..." value="${babJudulIndo||''}" />
+    <input class="bab-judul-jawa" type="text" placeholder="Terjemah Jawa..." value="${babJudulJawa||''}" />
+    <input class="bab-judul-nomor" type="text" placeholder="١" value="${babNomor||''}" style="direction:rtl;width:60px;" />
+  </div>
+  <table>
+    <thead><tr>
+  <th class="col-kode th-resizable" id="th-kode-${id}">Kode<span class="kode-hint">م · ١ · [١]</span><div class="col-resize-handle" onmousedown="mulaiResize(event,'kode',${id})" ontouchstart="mulaiResize(event,'kode',${id})"></div></th>
+  <th class="col-arab th-resizable" id="th-arab-${id}">Kata Arab<div class="col-resize-handle" onmousedown="mulaiResize(event,'arab',${id})" ontouchstart="mulaiResize(event,'arab',${id})"></div></th>
+  <th class="col-indo th-resizable" id="th-indo-${id}">Pegon Indonesia<button class="toggle-pegon-kolom" onclick="toggleKolomPegon(${id})">⇄ Jawa</button><div class="col-resize-handle" onmousedown="mulaiResize(event,'indo',${id})" ontouchstart="mulaiResize(event,'indo',${id})"></div></th>
+  <th class="col-jawa th-resizable" id="th-jawa-${id}" style="display:none;">Pegon Jawa<button class="toggle-pegon-kolom" onclick="toggleKolomPegon(${id})">⇄ Indo</button><div class="col-resize-handle" onmousedown="mulaiResize(event,'jawa',${id})" ontouchstart="mulaiResize(event,'jawa',${id})"></div></th>
+  <th class="col-nom th-resizable" id="th-nom-${id}">No. Ayat<div class="col-resize-handle" onmousedown="mulaiResize(event,'nom',${id})" ontouchstart="mulaiResize(event,'nom',${id})" ></div></th>
+  <th class="col-hapus"></th>
+</tr></thead>
+    <tbody id="tbody-${id}"></tbody>
+  </table>
+  <button class="btn-tambah-kata" onclick="tambahKata(${id})">+ Tambah Kata</button>
+`;
+      container.appendChild(div);
+      if (kataList && kataList.length) kataList.forEach(d => tambahKata(id, d.arab, d.maknaIndo || d.makna || '', d.maknaJawa || '', d.kode || '', d.nomor || '', d.krKanan || false, d.geserPegon || ''));
+      else tambahKata(id);
+    }
+
+    function hapusBab(id) {
+      if (confirm('Yakin ingin menghapus bab ini beserta semua katanya?'))
+        document.getElementById(id)?.remove();
+    }
+
+    function tambahKata(babId, arab = '', maknaIndo = '', maknaJawa = '', kode = '', nomor = '', krKanan = false, geserPegon = '') {
+      const tbody = document.getElementById('tbody-' + babId);
+      if (!tbody) return;
+      const id = kataCounter++;
+      const tr = document.createElement('tr');
+      tr.id = 'kata-' + id;
+      tr.innerHTML = `
+      <td class="col-kode"><input class="kode-input" type="text" placeholder="م · ١ · [١]" value="${kode}" /><label style="font-size:9px;color:#6b7280;display:block;margin-top:2px;white-space:nowrap;"><input type="checkbox" class="kr-kanan-cb" ${krKanan?'checked':''} style="width:12px;height:12px;"> KR→kanan</label><input class="geser-pegon-input" type="number" placeholder="Geser px" value="${geserPegon||''}" title="Geser Pegon (px): positif=kiri, negatif=kanan" style="width:54px;font-size:9px;margin-top:2px;border:1px solid #40916c;border-radius:3px;padding:1px 3px;color:#2d6a4f;" /></td>
+      <td><input class="arab-input" type="text" placeholder="كَلِمَة" value="${arab}" /></td>
+      <td class="col-indo td-indo-${babId}"><input class="makna-indo" type="text" placeholder="artinya..." value="${maknaIndo}" /></td>
+<td class="col-jawa td-jawa-${babId}" style="display:none;"><input class="makna-jawa" type="text" placeholder="tegese..." value="${maknaJawa}" /></td>
+      <td class="col-nom"><input class="nom-input" type="text" placeholder="١" value="${nomor}" oninput="simpan()" /><button type="button" onclick="gabungNomorIni(this)" title="Hapus nomor ini & geser mundur semua nomor setelahnya di seluruh kitab" style="display:block;width:100%;font-size:9px;margin-top:2px;padding:1px;border:1px solid #40916c;border-radius:3px;background:#fef9e7;color:#2d6a4f;">🔢 Gabung</button></td>
+      <td class="col-hapus">
+      <button onclick="pecahBab('kata-${id}')">✂</button>
+      <button onclick="insertKata('kata-${id}')" title="Sisipkan baris baru di bawah ini">＋</button>
+      <button onclick="hapusKata('kata-${id}')">✕</button>
+</td>
+    `;
+      tbody.appendChild(tr);
+    }
+
+    function insertKata(kataId) {
+      const tr = document.getElementById(kataId);
+      if (!tr) return;
+      const tbody = tr.closest('tbody');
+      const babEl = tbody.closest('.bab-input');
+      const babId = babEl.id.replace('bab-', '');
+      const id = kataCounter++;
+      const trBaru = document.createElement('tr');
+      trBaru.id = 'kata-' + id;
+      trBaru.innerHTML = `
+      <td class="col-kode"><input class="kode-input" type="text" placeholder="م · ١ · [١]" value="" /><label style="font-size:9px;color:#6b7280;display:block;margin-top:2px;white-space:nowrap;"><input type="checkbox" class="kr-kanan-cb" style="width:12px;height:12px;"> KR→kanan</label><input class="geser-pegon-input" type="number" placeholder="Geser px" value="" title="Geser Pegon (px): positif=kiri, negatif=kanan" style="width:54px;font-size:9px;margin-top:2px;border:1px solid #40916c;border-radius:3px;padding:1px 3px;color:#2d6a4f;" /></td>
+      <td><input class="arab-input" type="text" placeholder="كَلِمَة" value="" /></td>
+      <td class="col-indo td-indo-${babId}"><input class="makna-indo" type="text" placeholder="artinya..." value="" /></td>
+      <td class="col-jawa td-jawa-${babId}" style="display:none;"><input class="makna-jawa" type="text" placeholder="tegese..." value="" /></td>
+      <td class="col-nom"><input class="nom-input" type="text" placeholder="١" value="" /></td>
+      <td class="col-hapus">
+      <button onclick="pecahBab('kata-${id}')">✂</button>
+      <button onclick="insertKata('kata-${id}')" title="Sisipkan baris baru di bawah ini">＋</button>
+      <button onclick="hapusKata('kata-${id}')">✕</button>
+      </td>
+      `;
+      // Sisipkan SETELAH tr yang diklik
+      tr.insertAdjacentElement('afterend', trBaru);
+      // Sinkron tampilan kolom Indo/Jawa
+      const indoTampil = document.getElementById('th-indo-' + babId)?.style.display !== 'none';
+      trBaru.querySelector('.td-indo-' + babId).style.display = indoTampil ? '' : 'none';
+      trBaru.querySelector('.td-jawa-' + babId).style.display = indoTampil ? 'none' : '';
+      // Fokus ke input Arab baris baru
+      trBaru.querySelector('.arab-input').focus();
+      simpan();
+    }
+    
+    function toggleKolomPegon(babId) {
+  const thIndo = document.getElementById('th-indo-' + babId);
+  const thJawa = document.getElementById('th-jawa-' + babId);
+  const tdIndo = document.querySelectorAll('.td-indo-' + babId);
+  const tdJawa = document.querySelectorAll('.td-jawa-' + babId);
+
+  const indoTampil = thIndo.style.display !== 'none';
+  thIndo.style.display = indoTampil ? 'none' : '';
+  thJawa.style.display = indoTampil ? '' : 'none';
+  tdIndo.forEach(td => td.style.display = indoTampil ? 'none' : '');
+  tdJawa.forEach(td => td.style.display = indoTampil ? '' : 'none');
+}
+
+    let resizeState = null;
+
+function mulaiResize(e, kolom, babId) {
+  e.preventDefault();
+  const th = document.getElementById('th-' + kolom + '-' + babId);
+  const startX = e.touches ? e.touches[0].clientX : e.clientX;
+  const startW = th.offsetWidth;
+  resizeState = { kolom, babId, startX, startW, th };
+
+  document.addEventListener('mousemove', gerakResize);
+  document.addEventListener('mouseup', selesaiResize);
+  document.addEventListener('touchmove', gerakResize, { passive: false });
+  document.addEventListener('touchend', selesaiResize);
+}
+
+function gerakResize(e) {
+  if (!resizeState) return;
+  e.preventDefault();
+  const { th, startX, startW } = resizeState;
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const delta = x - startX;
+  const newW = Math.max(30, startW + delta);
+  th.style.width = newW + 'px';
+}
+
+function selesaiResize() {
+  if (!resizeState) return;
+  const { kolom, babId } = resizeState;
+  const th = document.getElementById('th-' + kolom + '-' + babId);
+
+  const babEl = document.getElementById('bab-' + babId);
+  if (!babEl) { resizeState = null; return; }
+  const halEl = babEl.closest('.halaman-input');
+  if (!halEl) { resizeState = null; return; }
+
+  if (!halEl.dataset.lebarKolom) halEl.dataset.lebarKolom = '{}';
+  const lebarMap = JSON.parse(halEl.dataset.lebarKolom);
+  lebarMap[kolom] = th.offsetWidth;
+  halEl.dataset.lebarKolom = JSON.stringify(lebarMap);
+
+  terapkanLebarKolom(halEl);
+  lebarKolomDefault = JSON.parse(halEl.dataset.lebarKolom);
+  simpan();
+  document.removeEventListener('mousemove', gerakResize);
+  document.removeEventListener('mouseup', selesaiResize);
+  document.removeEventListener('touchmove', gerakResize);
+  document.removeEventListener('touchend', selesaiResize);
+  resizeState = null;
+}
+
+function terapkanLebarKolom(halEl) {
+  if (!halEl.dataset.lebarKolom) return;
+  const lebarMap = JSON.parse(halEl.dataset.lebarKolom);
+  halEl.querySelectorAll('.bab-input').forEach(bab => {
+    const babId = bab.id.replace('bab-', '');
+    Object.entries(lebarMap).forEach(([kolom, lebar]) => {
+      const th = document.getElementById('th-' + kolom + '-' + babId);
+      if (th) th.style.width = lebar + 'px';
+    });
+  });
+}
+    
+    function samakanLebarKolomSemua() {
+  const semua = document.querySelectorAll('.halaman-input');
+  if (!semua.length) return;
+
+  // Ambil lebar dari halaman pertama
+  let halPertama = null;
+  for (const hal of semua) {
+    if (hal.dataset.lebarKolom) { halPertama = hal; break; }
+  }
+  if (!halPertama) {
+    alert('Belum ada halaman yang diatur lebarnya. Geser kolom di salah satu halaman dulu.');
+    return;
+  }
+  const lebarMap = JSON.parse(halPertama.dataset.lebarKolom);
+  // Terapkan ke semua halaman
+  semua.forEach(hal => {
+    hal.dataset.lebarKolom = JSON.stringify(lebarMap);
+    terapkanLebarKolom(hal);
+  });
+
+  // Jadikan default untuk halaman baru
+  lebarKolomDefault = lebarMap;
+
+  simpan();
+  alert('Lebar kolom semua halaman sudah disamakan.');
+}
+    
+    /* ===== BAB SYI'IR ===== */
+    function tambahBabSyiir(halamanId, data = {}) {
+      const id = babCounter++;
+      const container = document.getElementById('containerBab-' + halamanId);
+      if (!container) return;
+      const model = data.model || 'A';
+      const div = document.createElement('div');
+      div.className = 'syiir-input';
+      div.id = 'syiir-' + id;
+      div.dataset.tipe = 'syiir';
+      div.innerHTML = `
+        <div class="syiir-header">
+          <span class="syiir-label">🎵 Syi'ir</span>
+          <select class="syiir-model-select" onchange="simpan()">
+            <option value="A"${model==='A'?' selected':''}>Model A – dua shatr berdampingan</option>
+            <option value="B"${model==='B'?' selected':''}>Model B – shatr tsani menjorok</option>
+          </select>
+          <button class="btn-gabung-bab" onclick="gabungSyiir('syiir-${id}')">⊕ Gabung</button>
+          <button class="btn-pindah-bab" onclick="bukaPindahBab('syiir-${id}')">⇄ Pindah</button>
+          <button class="btn-hapus-syiir" onclick="hapusBabSyiir('syiir-${id}')">Hapus Syi'ir</button>
+        </div>
+        <div class="syiir-bait-list" id="baitList-${id}"></div>
+        <button class="btn-tambah-bait-syiir" onclick="tambahBaitSyiir(${id})">+ Tambah Bait</button>
+      `;
+      container.appendChild(div);
+      const baitList = data.baitList || [];
+      if (baitList.length) {
+        baitList.forEach(b => tambahBaitSyiir(id, b));
+      } else {
+        tambahBaitSyiir(id);
+      }
+    }
+
+    function tambahBaitSyiir(syiirId, data = {}) {
+      const container = document.getElementById('baitList-' + syiirId);
+      if (!container) return;
+      const id = babCounter++;
+      const div = document.createElement('div');
+      div.className = 'syiir-bait';
+      div.id = 'bait-' + id;
+      div.innerHTML = `
+        <div class="syiir-bait-header">
+          <span>Bait</span>
+          <button class="btn-hapus-bait" onclick="hapusBaitSyiir('bait-${id}')">✕</button>
+        </div>
+        <div class="syiir-shatr" id="shatrAwwal-${id}">
+          <div class="syiir-shatr-label">Shatr Awwal</div>
+          <div class="syiir-kata-list" id="kataAwwal-${id}"></div>
+          <button class="btn-tambah-kata-syiir" onclick="tambahKataSyiir(${id},'awwal')">+ Kata</button>
+        </div>
+        <div class="syiir-shatr" id="shatrTsani-${id}">
+          <div class="syiir-shatr-label">Shatr Tsani</div>
+          <div class="syiir-kata-list" id="kataTsani-${id}"></div>
+          <button class="btn-tambah-kata-syiir" onclick="tambahKataSyiir(${id},'tsani')">+ Kata</button>
+        </div>
+      `;
+      container.appendChild(div);
+      const awwalList = data.awwal || [];
+      const tsaniList = data.tsani || [];
+      if (awwalList.length) awwalList.forEach(k => tambahKataSyiir(id, 'awwal', k));
+      else tambahKataSyiir(id, 'awwal');
+      if (tsaniList.length) tsaniList.forEach(k => tambahKataSyiir(id, 'tsani', k));
+      else tambahKataSyiir(id, 'tsani');
+    }
+
+    function tambahKataSyiir(baitId, shatr, data = {}) {
+      const container = document.getElementById('kata' + (shatr === 'awwal' ? 'Awwal' : 'Tsani') + '-' + baitId);
+      if (!container) return;
+      const id = kataCounter++;
+      const item = document.createElement('div');
+      item.className = 'syiir-kata-item';
+      item.id = 'skata-' + id;
+      item.innerHTML = `
+        <input class="s-kode" type="text" placeholder="كode" value="${data.kode||''}" oninput="simpan()" style="font-size:10px;width:60px;border:none;background:transparent;text-align:center;color:#2d6a4f;" />
+        <input class="s-arab" type="text" placeholder="كَلِمَةٌ" value="${data.arab||''}" oninput="simpan()" />
+        <input class="s-indo" type="text" placeholder="makna indo" value="${data.maknaIndo||''}" oninput="simpan()" />
+        <input class="s-jawa" type="text" placeholder="makna jawa" value="${data.maknaJawa||''}" oninput="simpan()" />
+        <input class="s-geser" type="number" placeholder="±px" value="${data.geserPegon||''}" oninput="simpan()" title="Geser Pegon (px)" style="width:40px;font-size:9px;border:1px solid #40916c;border-radius:3px;padding:1px 2px;text-align:center;color:#2d6a4f;" />
+        <button style="font-size:9px;border:none;background:transparent;color:#dc2626;cursor:pointer;" onclick="document.getElementById('skata-${id}').remove();simpan()">✕</button>
+      `;
+      container.appendChild(item);
+    }
+
+    function hapusBabSyiir(id) {
+      if (confirm('Hapus syi\'ir ini?')) document.getElementById(id)?.remove();
+    }
+    function hapusBaitSyiir(id) {
+      if (confirm('Hapus bait ini?')) document.getElementById(id)?.remove();
+    }
+
+    function hapusKata(id) {
+      if (confirm('Yakin ingin menghapus kata ini?'))
+        document.getElementById(id)?.remove();
+    }
+
+    // Konversi angka Arab <-> integer, dipakai utk renumbering otomatis
+    const ANGKA_ARAB = '٠١٢٣٤٥٦٧٨٩';
+    function arabKeAngka(s) {
+      s = (s || '').trim();
+      if (!s) return null;
+      let hasil = '';
+      for (const c of s) {
+        const idx = ANGKA_ARAB.indexOf(c);
+        if (idx === -1) {
+          if (c >= '0' && c <= '9') { hasil += c; continue; }
+          return null; // ada karakter non-angka, jangan dipaksa
+        }
+        hasil += String(idx);
+      }
+      return hasil ? parseInt(hasil) : null;
+    }
+    function angkaKeArab(n) {
+      return String(n).split('').map(d => ANGKA_ARAB[parseInt(d)]).join('');
+    }
+
+    function gabungNomorIni(btn) {
+      const inputIni = btn.closest('td').querySelector('.nom-input');
+      const nilaiSekarang = arabKeAngka(inputIni.value);
+      if (nilaiSekarang === null) {
+        alert('Field nomor ini kosong atau formatnya bukan angka — tidak ada yang digabung.');
+        return;
+      }
+
+      // Cari nomor SEBELUMNYA (yang nilainya langsung di bawah nilaiSekarang) di antara semua field nomor
+      let inputSebelumnya = null;
+      let nilaiSebelumnya = -1;
+      document.querySelectorAll('.nom-input').forEach(inp => {
+        if (inp === inputIni) return;
+        const n = arabKeAngka(inp.value);
+        if (n !== null && n < nilaiSekarang && n > nilaiSebelumnya) {
+          nilaiSebelumnya = n;
+          inputSebelumnya = inp;
+        }
+      });
+
+      if (!inputSebelumnya) {
+        alert(`Tidak ditemukan nomor sebelum ${inputIni.value} — tidak ada yang bisa digabung.`);
+        return;
+      }
+
+      const konfirmasi = confirm(
+        `Nomor ${inputSebelumnya.value} akan dihapus (kata-katanya menyatu ke kelompok nomor ${inputIni.value}), ` +
+        `dan SEMUA nomor setelahnya di SELURUH KITAB akan otomatis mundur 1 angka. Lanjutkan?`
+      );
+      if (!konfirmasi) return;
+
+      inputSebelumnya.value = '';
+
+      let jumlahDiubah = 0;
+      document.querySelectorAll('.nom-input').forEach(inp => {
+        if (inp === inputSebelumnya) return;
+        const n = arabKeAngka(inp.value);
+        if (n !== null && n > nilaiSebelumnya) {
+          inp.value = angkaKeArab(n - 1);
+          jumlahDiubah++;
+        }
+      });
+
+      simpan();
+      alert(`Selesai. ${jumlahDiubah} nomor di seluruh kitab telah digeser mundur 1 angka.`);
+    }
+
+    function tampilkan(mode) {
+      if (!mode) mode = modeTampilTerakhir;
+      modeTampilTerakhir = mode;
+      try {
+      const hasilEl = document.getElementById('hasil');
+      hasilEl.classList.toggle('mode-html', mode === 'html');
+        document.body.classList.toggle('mode-html-aktif', mode === 'html');
+      const judulKitab = document.getElementById('judulKitab').value.trim();
+      const judulArab = document.getElementById('judulArab').value.trim();
+      const namaUstaz = document.getElementById('namaUstaz').value.trim();
+      const tahun = document.getElementById('tahunKitab').value.trim();
+      const edisi = document.getElementById('edisiKitab').value.trim();
+      const pengantar = document.getElementById('pengantarKitab').innerHTML.trim();
+      function htmlAdaIsi(htmlStr) {
+        return !!(htmlStr || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, '').trim();
+      }
+      let html = '', navList = [];
+      let nomorHalIsi = 0;
+      let nomorCatatanNahwu = 0;
+      const nomorHalamanMap = hitungNomorHalaman();
+      if (judulKitab || judulArab) {
+        html += `<div class="cover-kitab">
+        ${judulArab?`<div class="judul-arab">${judulArab}</div>`:''}
+        ${judulKitab?`<div class="judul-indo">${judulKitab}</div>`:''}
+        <div class="hiasan">&#10087; &#10022; &#10087;</div>
+        ${namaUstaz?`<div class="penyusun">${namaUstaz}</div>`:''}
+        ${tahun||edisi?`<div class="sub-info">${[edisi,tahun].filter(Boolean).join(' · ')}</div>`:''}
+      </div>`;
+      }
+      let pengantarHtml = '';
+let pengantarNav = null;
+if (htmlAdaIsi(pengantar)) {
+  nomorHalIsi++;
+  pengantarNav = {id: 'hasil-pengantar', nama: 'Pengantar'};
+  pengantarHtml = `<div class="pengantar-hasil" id="hasil-pengantar"><h2>Pengantar</h2><div class="pengantar-teks">${pengantar}</div><div class="nomor-halaman-hasil">${String(nomorHalIsi).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div></div>`;
+}
+      
+document.querySelectorAll('.halaman-input').forEach((hal, hIdx) => {
+  if (hIdx === 1 && pengantarHtml) {
+    html += pengantarHtml;
+    navList.push(pengantarNav);
+    pengantarHtml = '';
+  }
+  const halId = hal.id.replace('halaman-', '');
+  const infoNomor = nomorHalamanMap.get(hal.id) || { nomor: hIdx + 1, tampilNomor: true };
+  const nomorHal = infoNomor.nomor;
+  nomorHalIsi = nomorHal;
+        const anchor = `hasil-halaman-${halId}`;
+
+  if (hal.classList.contains('halaman-gambar')) {
+          const gambar = hal.querySelector('.data-gambar-halaman')?.value || '';
+          const teksAtas = hal.querySelector('.teks-atas-gambar')?.innerHTML.trim() || '';
+          const teksBawah = hal.querySelector('.teks-bawah-gambar')?.innerHTML.trim() || '';
+          const adaTeks = htmlAdaIsi(teksAtas) || htmlAdaIsi(teksBawah);
+          navList.push({
+            id: anchor,
+            nama: `Gambar: Halaman ${nomorHal}`
+          });
+          let nomorDivGambar = '';
+          if (infoNomor.tampilNomor) {
+            nomorDivGambar = `<div class="nomor-halaman-hasil">${String(nomorHal).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div>`;
+          }
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-gambar${adaTeks?' ada-teks':''}">
+        ${htmlAdaIsi(teksAtas)?`<div class="teks-gambar-atas">${teksAtas}</div>`:''}
+        ${gambar?`<img src="${gambar}" alt="Gambar halaman">`:`<div class="placeholder-gambar">(Belum ada gambar)</div>`}
+        ${htmlAdaIsi(teksBawah)?`<div class="teks-gambar-bawah">${teksBawah}</div>`:''}
+      </div>
+      ${nomorDivGambar}
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-profil')) {
+          const judulArabK = judulArab || '';
+          const judulIndoK = judulKitab || '';
+          const penyusun = hal.querySelector('.profil-penyusun')?.value.trim() || '';
+          const pengarang = hal.querySelector('.profil-pengarang')?.value.trim() || '';
+          const terbitOnline = hal.querySelector('.profil-terbit-online')?.value.trim() || '';
+          const penerbit = hal.querySelector('.profil-penerbit')?.value.trim() || '';
+          const ketHtml = hal.querySelector('.profil-keterangan')?.innerHTML.trim() || '';
+          navList.push({ id: anchor, nama: 'Profil Kitab' });
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-profil"><div class="profil-kitab-box">
+        ${judulArabK?`<div class="pk-judul-arab">${judulArabK}</div>`:''}
+        ${judulIndoK?`<div class="pk-judul-indo">${judulIndoK}</div>`:''}
+        ${penyusun?`<div class="pk-label">Terjemah dan Aplikasi</div><div class="pk-value">${penyusun}</div>`:''}
+        ${pengarang?`<div class="pk-label">Pengarang</div><div class="pk-value">${pengarang}</div>`:''}
+        ${tahun?`<div class="pk-label">Terbit Pertama</div><div class="pk-value">${tahun}</div>`:''}
+        ${terbitOnline?`<div class="pk-label">Terbit Online</div><div class="pk-value">${terbitOnline}</div>`:''}
+        ${penerbit?`<div class="pk-label">Penerbit</div><div class="pk-value">${penerbit}</div>`:''}
+        ${htmlAdaIsi(ketHtml)?`<div class="pk-keterangan">${ketHtml}</div>`:''}
+      </div><div class="profil-kitab-box-spacer"></div></div>
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-daftarisi')) {
+          const teksDI = hal.querySelector('.daftarisi-input')?.value || '';
+          navList.push({ id: anchor, nama: 'Daftar Isi' });
+          const barisHtmlDI = teksDI.split('\n').map(b => b.trim()).filter(Boolean).map(b => {
+            const parts = b.split('|');
+            const nama = (parts[0]||'').trim();
+            const nomor = (parts[1]||'').trim();
+            const isNahwuDI = /^Catatan Nahwu/i.test(nama);
+            return `<div class="daftarisi-baris${isNahwuDI?' daftarisi-baris-nahwu':''}"><span class="di-nama">${nama}</span><span class="di-titik"></span><span class="di-nomor">${nomor}</span></div>`;
+          }).join('');
+          const nomorDivDI = infoNomor.tampilNomor ? `<div class="nomor-halaman-hasil">${String(nomorHal).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div>` : '';
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-daftarisi">
+        <div class="daftarisi-judul"><span class="di-judul-arab">الفهرس</span><span class="di-judul-sep"> / </span><span class="di-judul-indo">Daftar Isi</span></div>
+        ${barisHtmlDI}
+        ${nomorDivDI}
+      </div>
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-pegon')) {
+          navList.push({ id: anchor, nama: 'Penjelasan Pegon' });
+          const nomorDivPegon = infoNomor.tampilNomor ? `<div class="nomor-halaman-hasil">${String(nomorHal).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div>` : '';
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-pegon">
+        <div class="pegon-judul">APA ITU PEGON?</div>
+        <div class="pegon-intro">Pegon adalah bahasa kita (baik Indonesia, Jawa, dll, non-Arab) yang ditulis dengan teks Arab. Berikut ini hal-hal yang harus diketahui:</div>
+        <div class="pegon-tabel-row">
+          <div class="pegon-tabel-box ptb-2kolom">
+            <div class="ptb-judul">Huruf Mati:</div>
+            <div class="ptb-baris"><span>b = </span><span class="ptb-arab">ب</span></div>
+            <div class="ptb-baris"><span>c = </span><span class="ptb-arab">چ</span></div>
+            <div class="ptb-baris"><span>d = </span><span class="ptb-arab">د</span></div>
+            <div class="ptb-baris"><span>f = </span><span class="ptb-arab">ف</span></div>
+            <div class="ptb-baris"><span>g = </span><span class="ptb-arab">ك</span></div>
+            <div class="ptb-baris"><span>h = </span><span class="ptb-arab">ھ</span></div>
+            <div class="ptb-baris"><span>j = </span><span class="ptb-arab">ج</span></div>
+            <div class="ptb-baris"><span>k = </span><span class="ptb-arab">ك</span></div>
+            <div class="ptb-baris"><span>l = </span><span class="ptb-arab">ل</span></div>
+            <div class="ptb-baris"><span>m = </span><span class="ptb-arab">م</span></div>
+            <div class="ptb-baris"><span>n = </span><span class="ptb-arab">ن</span></div>
+            <div class="ptb-baris"><span>p = </span><span class="ptb-arab">ڤ</span></div>
+            <div class="ptb-baris"><span>q = </span><span class="ptb-arab">ق</span></div>
+            <div class="ptb-baris"><span>r = </span><span class="ptb-arab">ر</span></div>
+            <div class="ptb-baris"><span>s = </span><span class="ptb-arab">س</span></div>
+            <div class="ptb-baris"><span>t = </span><span class="ptb-arab">ت</span></div>
+            <div class="ptb-baris"><span>v = </span><span class="ptb-arab">ف</span></div>
+            <div class="ptb-baris"><span>w = </span><span class="ptb-arab">و</span></div>
+            <div class="ptb-baris"><span>x = </span><span class="ptb-arab">كس</span></div>
+            <div class="ptb-baris"><span>y = </span><span class="ptb-arab">ي</span></div>
+            <div class="ptb-baris"><span>z = </span><span class="ptb-arab">ز</span></div>
+          </div>
+          <div class="pegon-tabel-box">
+            <div class="ptb-judul">Huruf Hidup:</div>
+            <div class="ptb-baris"><span>a = </span><span class="ptb-arab">ا</span></div>
+            <div class="ptb-baris"><span>u, o = </span><span class="ptb-arab">و</span></div>
+            <div class="ptb-baris"><span>i, e = </span><span class="ptb-arab">ي</span></div>
+          </div>
+          <div class="pegon-tabel-box">
+            <div class="ptb-judul">1 Huruf untuk 2-3 Huruf:</div>
+            <div class="ptb-baris"><span class="ptb-arab">و</span><span>= w, u, o</span></div>
+            <div class="ptb-baris"><span class="ptb-arab">ي</span><span>= y, i, e</span></div>
+            <div class="ptb-baris"><span class="ptb-arab">ع</span><span>= ng, '</span></div>
+            <div class="ptb-baris"><span class="ptb-arab">ج</span><span>= c, j</span></div>
+            <div class="ptb-baris"><span class="ptb-arab">ك</span><span>= k, g</span></div>
+            <div class="ptb-baris"><span class="ptb-arab">ف</span><span>= f, p</span></div>
+          </div>
+        </div>
+        <div class="pegon-contoh-judul">Contoh-contoh:</div>
+        <div class="pegon-contoh-grid">
+          <div class="pcg-item"><span class="pcg-arab">سايا</span><span>= saya</span></div>
+          <div class="pcg-item"><span class="pcg-arab">سايا ع</span><span>= sayang</span></div>
+          <div class="pcg-item"><span class="pcg-arab">سياع</span><span>= siyang</span></div>
+          <div class="pcg-item"><span class="pcg-arab">أكو</span><span>= aku</span></div>
+          <div class="pcg-item"><span class="pcg-arab">كونوع</span><span>= gunung</span></div>
+          <div class="pcg-item"><span class="pcg-arab">يافو</span><span>= nyapu</span></div>
+          <div class="pcg-item"><span class="pcg-arab">هاري</span><span>= hari</span></div>
+          <div class="pcg-item"><span class="pcg-arab">هاريماو</span><span>= harimau</span></div>
+          <div class="pcg-item"><span class="pcg-arab">باياعان</span><span>= bayangan</span></div>
+          <div class="pcg-item"><span class="pcg-arab">جوبا</span><span>= coba</span></div>
+          <div class="pcg-item"><span class="pcg-arab">أوماه</span><span>= omah</span></div>
+          <div class="pcg-item"><span class="pcg-arab">فاتوع</span><span>= patung</span></div>
+          <div class="pcg-item"><span class="pcg-arab">جاري</span><span>= jari</span></div>
+          <div class="pcg-item"><span class="pcg-arab">كونجو</span><span>= konco</span></div>
+          <div class="pcg-item"><span class="pcg-arab">أيار</span><span>= anyar</span></div>
+          <div class="pcg-item"><span class="pcg-arab">كاكي</span><span>= kaki</span></div>
+          <div class="pcg-item"><span class="pcg-arab">كواسا</span><span>= kuwasa</span></div>
+          <div class="pcg-item"><span class="pcg-arab">أنتري</span><span>= antri</span></div>
+          <div class="pcg-item"><span class="pcg-arab">هارو</span><span>= haru</span></div>
+          <div class="pcg-item"><span class="pcg-arab">هاروس</span><span>= harus</span></div>
+          <div class="pcg-item"><span class="pcg-arab">تمان</span><span>= teman</span></div>
+          <div class="pcg-item"><span class="pcg-arab">رومو</span><span>= romo</span></div>
+          <div class="pcg-item"><span class="pcg-arab">أكوع</span><span>= agung</span></div>
+          <div class="pcg-item"><span class="pcg-arab">ستيا</span><span>= setia</span></div>
+        </div>
+      </div>
+      ${nomorDivPegon}
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-daftarkode')) {
+          const teksDiucapkan = hal.querySelector('.daftarkode-input-diucapkan')?.value || '';
+          const teksTidak = hal.querySelector('.daftarkode-input-tidak')?.value || '';
+          navList.push({ id: anchor, nama: 'Daftar Kode Gramatikal' });
+          const barisDiucapkan = teksDiucapkan.split('\n').map(b => b.trim()).filter(Boolean).map(b => {
+            const parts = b.split('|');
+            return {
+              rumus: (parts[0]||'').trim(),
+              maknaJawa: (parts[1]||'').trim(),
+              maknaIndo: (parts[2]||'').trim(),
+              kepanjangan: (parts[3]||'').trim()
+            };
+          });
+          const barisTidak = teksTidak.split('\n').map(b => b.trim()).filter(Boolean).map(b => {
+            const parts = b.split('|');
+            return {
+              rumus: (parts[0]||'').trim(),
+              kepanjangan: (parts[1]||'').trim()
+            };
+          });
+          function buatTabelDK(list, mode) {
+            if (!list.length) return '';
+            if (mode === 'tidak') {
+              const baris = list.map(r => `<tr>
+                <td class="dkt-arab dkt-kepanjangan">${r.kepanjangan}</td>
+                <td class="dkt-kode">${r.rumus}</td>
+              </tr>`).join('');
+              return `<table class="daftarkode-tabel daftarkode-tabel-tidak"><thead><tr>
+                <th class="dkt-kepanjangan">Kepanjangan</th><th class="dkt-kode">Rumus</th>
+              </tr></thead><tbody>${baris}</tbody></table>`;
+            }
+            const baris = list.map(r => `<tr>
+              <td class="dkt-arab dkt-makna">${r.maknaJawa}</td>
+              <td class="dkt-arab dkt-makna">${r.maknaIndo}</td>
+              <td class="dkt-arab dkt-kepanjangan">${r.kepanjangan}</td>
+              <td class="dkt-kode">${r.rumus}</td>
+            </tr>`).join('');
+            return `<table class="daftarkode-tabel daftarkode-tabel-diucapkan"><thead><tr>
+              <th class="dkt-makna">Makna Jawa</th><th class="dkt-makna">Makna Indo</th><th class="dkt-kepanjangan">Kepanjangan</th><th class="dkt-kode">Rumus</th>
+            </tr></thead><tbody>${baris}</tbody></table>`;
+          }
+          const tabelDiucapkan = buatTabelDK(barisDiucapkan, 'diucapkan');
+          const tabelTidak = buatTabelDK(barisTidak, 'tidak');
+          const nomorDivDK = infoNomor.tampilNomor ? `<div class="nomor-halaman-hasil">${String(nomorHal).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div>` : '';
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-daftarkode">
+        <div class="daftarkode-judul">Daftar Kode Gramatikal</div>
+        <div class="daftarkode-tabel-wrap">
+          <div class="daftarkode-kolom">
+            <div class="daftarkode-subjudul">Kode-Kode yang Diucapkan</div>
+            ${tabelDiucapkan}
+          </div>
+          <div class="daftarkode-kolom">
+            <div class="daftarkode-subjudul">Kode-Kode yang Tidak Diucapkan</div>
+            ${tabelTidak}
+          </div>
+        </div>
+      </div>
+      ${nomorDivDK}
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-judul')) {
+          const arab = hal.querySelector('.judul-besar-arab')?.value.trim() || '';
+          const indo = hal.querySelector('.judul-besar-indo')?.value.trim() || '';
+          const jawa = hal.querySelector('.judul-besar-jawa')?.value.trim() || '';
+          const sub = hal.querySelector('.judul-besar-sub')?.value.trim() || '';
+          navList.push({
+            id: anchor,
+            nama: `Judul: ${arab||indo||'—'}`
+          });
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="hasil-halaman-judul">
+        ${arab?`<div class="hasil-judul-besar-arab">${arab}</div>`:''}
+        ${indo?`<div class="hasil-judul-besar-indo">${indo}</div>`:''}
+        ${jawa?`<div class="hasil-judul-besar-jawa">${jawa}</div>`:''}
+        ${sub?`<div class="hasil-judul-besar-sub">${sub}</div>`:''}
+      </div>
+    </div>`;
+          return;
+        }
+        if (hal.classList.contains('halaman-pengantar')) {
+          const isiPengantar = hal.querySelector('.pengantar-input')?.innerHTML.trim() || '';
+          navList.push({ id: anchor, nama: 'Pengantar' });
+          html += `<div class="hasil-halaman" id="${anchor}">
+      <div class="pengantar-hasil"><h2>Pengantar</h2><div class="pengantar-teks">${isiPengantar}</div></div>
+    </div>`;
+          return;
+        }
+        else {
+        navList.push({id:anchor,nama:`Halaman ${nomorHal}`});
+        html+=`<div class="hasil-halaman" id="${anchor}">`;
+
+        // Render bab biasa dulu (jika ada)
+        const adaBabBiasa = hal.querySelector('.bab-input');
+        if (!adaBabBiasa) html = html.slice(0, html.lastIndexOf(`<div class="hasil-halaman" id="${anchor}">`));
+
+        hal.querySelectorAll('.bab-input, .syiir-input').forEach(bab=>{
+          // ===== RENDER SYI'IR =====
+          if (bab.classList.contains('syiir-input')) {
+            const model = bab.querySelector('.syiir-model-select')?.value || 'A';
+            // Ambil halId dari parent halaman aktual (bukan iterasi), agar benar setelah dipindah
+            const parentHal = bab.closest('.halaman-input');
+            const syiirHalId = parentHal ? parentHal.id.replace('halaman-', '') : halId;
+            html += `<div class="hasil-syiir-blok" data-halaman="${syiirHalId}">`;
+            bab.querySelectorAll('.syiir-bait').forEach(baitEl => {
+              const baitId = baitEl.id.replace('bait-','');
+              const baitCls = `hasil-syiir-bait model-${model.toLowerCase()}`;
+              html += `<div class="${baitCls}">`;
+              // direction:rtl pada container — render Awwal dulu (tampil kanan), Tsani kemudian (tampil kiri)
+              const urutan = ['Awwal','Tsani'];
+              urutan.forEach((shatrNama, idx) => {
+                // Tambah separator dua garis di antara shatr (model A saja)
+                if (model === 'A' && idx === 1) {
+                  html += `<div class="syiir-separator"><span></span><span></span></div>`;
+                }
+                const kataContainer = baitEl.querySelector(`#kata${shatrNama}-${baitId}`);
+                if (!kataContainer) return;
+                const kataItems = kataContainer.querySelectorAll('.syiir-kata-item');
+                if (!kataItems.length) return;
+                const shatrCls = 'hasil-syiir-shatr' + (shatrNama==='Tsani' && model==='B' ? ' tsani':'');
+                html += `<div class="${shatrCls}">`;
+                kataItems.forEach(item => {
+                  const arab = item.querySelector('.s-arab')?.value || '';
+                  const kode = item.querySelector('.s-kode')?.value || '';
+                  const maknaIndo = item.querySelector('.s-indo')?.value || '';
+                  const maknaJawa = item.querySelector('.s-jawa')?.value || '';
+                  const geserPegon = item.querySelector('.s-geser')?.value || '';
+                  if (!arab) return;
+                  const arabTampil = prosesHarakat(arab);
+                  const showIndo = modeBahasa === 'indo';
+                  const hiddenCls = pegonTersembunyi ? ' tersembunyi' : '';
+                  const geser = geserPegon ? parseInt(geserPegon) : 0;
+                  const geserStyle = geser ? `style="margin-right:${geser}px;"` : '';
+                  const { gramatikal, targetRujukan, dhomirRujukan } = parseKode(kode);
+                  let kodeHtml = gramatikal.length === 0 ?
+                    `<div class="kode-kosong"></div>` :
+                    `<div class="kode-wrapper">${gramatikal.map(k => {
+                      if (!k) return '';
+                      if (k === '...') return `<div class="kode-gramatikal murojaah">...</div>`;
+                      const cls = DIUCAPKAN.includes(k) ? 'diucapkan' : 'tidakdiucapkan';
+                      return `<div class="kode-gramatikal ${cls}">${k}</div>`;
+                    }).join('')}</div>`;
+                  let rujukanRowHtml = '';
+                  if (targetRujukan !== null || dhomirRujukan !== null) {
+                    rujukanRowHtml = `<div class="rujukan-row">`;
+                    if (targetRujukan !== null) rujukanRowHtml += `<div class="rujukan-target">${targetRujukan}</div>`;
+                    if (dhomirRujukan !== null) rujukanRowHtml += `<div class="rujukan-dhamir">&#8594;${dhomirRujukan}</div>`;
+                    rujukanRowHtml += `</div>`;
+                  } else {
+                    rujukanRowHtml = `<div class="rujukan-kosong"></div>`;
+                  }
+                  html += `<div class="syiir-kata-blok">
+                    ${kodeHtml}
+                    <span class="arab" data-asli="${arab}">${arabTampil}</span>
+                    <div class="bawah-kata">
+                      ${rujukanRowHtml}
+                      <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}">${maknaIndo||maknaJawa}</span>
+                      <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}">${maknaJawa||maknaIndo}</span>
+                    </div>
+                  </div>`;
+                });
+                html += `</div>`;
+              });
+              html += `</div>`;
+            });
+            html += `</div>`;
+            return;
+          }
+          // ===== RENDER BAB BIASA =====
+          const babId=bab.id.replace('bab-','');
+          const namaBab=bab.querySelector('.bab-nama-input').value.trim();
+          const tbody=document.getElementById('tbody-'+babId);
+          if(!tbody)return;
+          const kataList=[];
+          tbody.querySelectorAll('tr').forEach(tr=>{
+            const kode=tr.querySelector('.kode-input').value.trim();
+            const arab=tr.querySelector('.arab-input').value.trim();
+            const maknaIndo=tr.querySelector('.makna-indo').value.trim();
+            const maknaJawa=tr.querySelector('.makna-jawa').value.trim();
+            const nomor=tr.querySelector('.nom-input').value.trim();
+            const krKanan=tr.querySelector('.kr-kanan-cb')?.checked||false;
+if(arab&&(maknaIndo||maknaJawa))kataList.push({kode,arab,maknaIndo,maknaJawa,nomor,krKanan,geserPegon:tr.querySelector('.geser-pegon-input')?.value||'',srcId:tr.id});        
+         });
+          html += `<div class="hasil-bab-section">`;
+          const judulIndo = bab.querySelector('.bab-judul-indo')?.value.trim() || '';
+          const judulJawa = bab.querySelector('.bab-judul-jawa')?.value.trim() || '';
+          const judulNomor = bab.querySelector('.bab-judul-nomor')?.value.trim() || '';
+          if (namaBab || judulNomor) {
+            html += `<div class="hasil-bab-judul">
+    ${judulNomor?`<div class="hasil-bab-judul-nomor">${judulNomor}</div>`:''}
+    <div class="hasil-bab-judul-teks">
+      ${namaBab?`<span class="hasil-bab-judul-arab">${namaBab}</span>`:''}
+      ${judulIndo?`<span class="hasil-bab-judul-indo">${judulIndo}</span>`:''}
+      ${judulJawa?`<span class="hasil-bab-judul-jawa">${judulJawa}</span>`:''}
+    </div>
+  </div>`;
+          }
+          if(!kataList.length){html+=`</div></div>`; return; }
+          html += `<div class="hasil-aliran">`;
+          kataList.forEach((item, index) => {
+            const {
+              gramatikal,
+              targetRujukan,
+              dhomirRujukan
+            } = parseKode(item.kode);
+            let kodeHtml = gramatikal.length === 0 ?
+              `<div class="kode-kosong"></div>` :
+              `<div class="kode-wrapper">${gramatikal.map(k=>{
+                if(!k)return'';
+                if(k==='...')return`<div class="kode-gramatikal murojaah">...</div>`;
+                const cls=DIUCAPKAN.includes(k)?'diucapkan':'tidakdiucapkan';
+                return`<div class="kode-gramatikal ${cls}">${k}</div>`;
+              }).join('')}</div>`;
+            let rujukanRowHtml = '';
+            if (targetRujukan !== null || dhomirRujukan !== null) {
+              rujukanRowHtml = `<div class="rujukan-row${item.krKanan ? ' kr-kanan' : ''}">`;
+              if (targetRujukan !== null) rujukanRowHtml += `<div class="rujukan-target">${targetRujukan}</div>`;
+              if (dhomirRujukan !== null) rujukanRowHtml += `<div class="rujukan-dhamir">&#8594;${dhomirRujukan}</div>`;
+              rujukanRowHtml += `</div>`;
+            } else {
+              rujukanRowHtml = `<div class="rujukan-kosong"></div>`;
+            }
+            const hiddenCls = pegonTersembunyi ? ' tersembunyi' : '';
+            const arabTampil = prosesHarakat(item.arab);
+            const zebra = index % 2 === 0 ? 'ganjil' : 'genap';
+            const nomorHtml = item.nomor ? `<div class="nomor-ayat" onclick="event.stopPropagation(); togglePopupTerjemahan(this, '${item.nomor}')">${item.nomor}</div>` : '';
+            const showIndo = modeBahasa === 'indo';
+            const geser = item.geserPegon ? parseInt(item.geserPegon) : 0;
+            const geserStyle = geser ? `style="margin-right:${geser}px;"` : '';
+            html += `<div class="kata-blok ${zebra}${item.nomor?' ada-nomor ujung-ayat':''}">
+            ${kodeHtml}
+            <span class="arab" data-asli="${item.arab}">${arabTampil}</span>
+            <div class="bawah-kata">
+              ${rujukanRowHtml}
+              <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}">${item.maknaIndo || item.maknaJawa}</span>
+              <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}">${item.maknaJawa || item.maknaIndo}</span>
+            </div>
+            ${nomorHtml}
+          </div>`;
+          });
+          html += `</div></div>`;
+        });
+        const nahwu = hal.querySelector('.nahwu-input')?.innerHTML.trim() || '';
+if (htmlAdaIsi(nahwu)) {
+  nomorCatatanNahwu++;
+  const manualJudulH = hal.querySelector('.nahwu-judul-input')?.value || '';
+  const judulNahwuH = ambilJudulNahwu(nahwu, manualJudulH);
+  html += `<div class="catatan-nahwu">
+    <div class="catatan-nahwu-label">✦ Catatan Nahwu ke-${nomorCatatanNahwu}${judulNahwuH?`: ${judulNahwuH}`:''} ✦</div>
+    <div class="catatan-nahwu-isi">${nahwu}</div>
+  </div>`;
+}
+if (infoNomor.tampilNomor) {
+  html+=`<div class="nomor-halaman-hasil">${String(nomorHal).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div>`;
+}
+html += `</div>`;
+        }
+      });
+      if (pengantarHtml) {
+        html += pengantarHtml;
+        navList.push(pengantarNav);
+      }
+      hasilEl.innerHTML = html;
+
+      // Syiir tetap di dalam hasil-halaman sesuai posisi DOM (tidak di-appendChild keluar)
+      // Posisi render sudah benar karena mengikuti urutan bab dalam halaman
+      if (kodeTersembunyi) {
+        hasilEl.querySelectorAll('.kode-wrapper,.kode-kosong,.rujukan-target,.rujukan-dhamir')
+          .forEach(el => el.style.visibility = 'hidden');
+      }
+      
+      updateNavHasil(navList);
+        } catch(e) { alert('ERROR: ' + e.message); }
+      document.querySelectorAll('.input-override-rapat').forEach(inp => {
+        if (inp.value.trim()) terapkanRapatkanKata(inp);
+      });
+      setTimeout(() => sembunyikanBorderUjung(), 100);
+      setTimeout(() => sesuaikanLebarPegon(), 800);
+
+      setTimeout(() => terapkanOverrideBaris(), 80);
+      setTimeout(() => {
+        terapkanOverrideBaris();
+        sembunyikanBorderUjung();
+      }, 900);
+    }
+
+    function sembunyikanBorderUjung() {
+  document.querySelectorAll('.hasil-aliran').forEach(aliran => {
+    const blok = aliran.querySelectorAll('.kata-blok');
+    if (!blok.length) return;
+
+    // Reset dulu semua
+    blok.forEach(b => b.classList.remove('ujung-baris'));
+
+    // Deteksi ujung baris: bandingkan offsetTop relatif ke aliran
+    // Toleransi 4px untuk mengatasi sub-pixel rendering
+    const TOLERANSI = 4;
+    let topSaat = null;
+    let terakhirDiBaris = null;
+    blok.forEach(b => {
+      const top = b.offsetTop;
+      if (topSaat !== null && Math.abs(top - topSaat) > TOLERANSI) {
+        if (terakhirDiBaris) terakhirDiBaris.classList.add('ujung-baris');
+      }
+      topSaat = top;
+      terakhirDiBaris = b;
+    });
+    // Kata terakhir di aliran (ujung baris terakhir)
+    if (terakhirDiBaris) terakhirDiBaris.classList.add('ujung-baris');
+  });
+}
+    
+    // ── Firebase Firestore Setup (menggantikan IndexedDB) ──────────
+    // Data dipecah jadi: 1 dokumen "profil" (info kitab) + 1 dokumen per
+    // halaman — supaya batas 1MB per dokumen Firestore berlaku PER HALAMAN,
+    // bukan untuk keseluruhan kitab. Jadi kitab boleh punya banyak halaman
+    // gambar tanpa takut kelebihan kuota.
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJVB25E2Oq6bEq5AkkTydGsLZ23dURj_Y",
+      authDomain: "bidayatuna-836e4.firebaseapp.com",
+      projectId: "bidayatuna-836e4",
+      storageBucket: "bidayatuna-836e4.firebasestorage.app",
+      messagingSenderId: "666248558558",
+      appId: "1:666248558558:web:d55a1a4583faf26c190f4f"
+    };
+    let dbFirestore = null, REF_PROFIL = null, REF_HALAMAN = null;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      dbFirestore = firebase.firestore();
+      REF_PROFIL = dbFirestore.collection('arrisalah').doc('profil');
+      REF_HALAMAN = dbFirestore.collection('arrisalah_halaman');
+    } catch (e) {
+      console.error('Gagal inisialisasi Firebase:', e);
+      // Sengaja tidak dilempar ulang (throw) — supaya sisa aplikasi
+      // (tombol, editor, dll.) tetap jalan normal walau Firestore gagal.
+      // simpanDB/muatDB/hapusDB di bawah akan kasih pesan error yang jelas
+      // kalau dipanggil dalam kondisi ini, bukan bikin semua tombol mati.
+    }
+
+    // Firestore menolak nilai `undefined` (beda dari IndexedDB yang toleran).
+    // JSON.parse(JSON.stringify(...)) otomatis membuang key yang undefined.
+    function bersihkanUndefined(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function simpanDB(data) {
+      if (!REF_PROFIL) return Promise.reject(new Error('Firestore tidak tersedia (gagal dimuat). Cek koneksi internet lalu muat ulang halaman.'));
+      const halamanList = data.halamanList || [];
+      const profil = Object.assign({}, data);
+      delete profil.halamanList;
+      profil.jumlahHalaman = halamanList.length;
+
+      const tugas = [REF_PROFIL.set(bersihkanUndefined(profil))];
+      halamanList.forEach((hal, i) => {
+        tugas.push(REF_HALAMAN.doc(String(i)).set(bersihkanUndefined(hal)));
+      });
+
+      return Promise.all(tugas).then(() => {
+        // Bersihkan dokumen halaman lama yang sudah tidak terpakai
+        // (misal setelah halaman dihapus dari kitab)
+        return REF_HALAMAN.get().then(snap => {
+          const hapus = [];
+          snap.forEach(doc => {
+            const idx = parseInt(doc.id, 10);
+            if (idx >= halamanList.length) hapus.push(doc.ref.delete());
+          });
+          return Promise.all(hapus);
+        });
+      });
+    }
+
+    function muatDB() {
+      if (!REF_PROFIL) return Promise.reject(new Error('Firestore tidak tersedia (gagal dimuat).'));
+      return REF_PROFIL.get().then(profilSnap => {
+        if (!profilSnap.exists) return null; // belum ada data tersimpan
+        const profil = profilSnap.data();
+        return REF_HALAMAN.get().then(snap => {
+          const arr = [];
+          snap.forEach(doc => { arr[parseInt(doc.id, 10)] = doc.data(); });
+          const halamanList = arr.filter(h => h !== undefined);
+          return Object.assign({}, profil, { halamanList });
+        });
+      });
+    }
+
+    function hapusDB() {
+      if (!REF_PROFIL) return Promise.reject(new Error('Firestore tidak tersedia (gagal dimuat).'));
+      return REF_HALAMAN.get().then(snap => {
+        const hapus = [];
+        snap.forEach(doc => hapus.push(doc.ref.delete()));
+        return Promise.all(hapus).then(() => REF_PROFIL.delete());
+      });
+    }
+    // ─────────────────────────────────────────────────────────────
+
+    let _simpanTimer = null;
+    function simpan() {
+      clearTimeout(_simpanTimer);
+      _simpanTimer = setTimeout(() => {
+        const data = ambilSemuaData();
+        simpanDB(data).then(() => {
+          const notif = document.getElementById('notif');
+          notif.classList.add('tampil');
+          setTimeout(() => notif.classList.remove('tampil'), 2000);
+        }).catch(() => {
+          // fallback localStorage jika IndexedDB gagal
+          try {
+            localStorage.setItem('gandul_data', JSON.stringify(data));
+            const notif = document.getElementById('notif');
+            notif.classList.add('tampil');
+            setTimeout(() => notif.classList.remove('tampil'), 2000);
+          } catch(e) {}
+        });
+      }, 1500);
+    }
+
+    function ambilSemuaData() {
+      const halamanList = [];
+      document.querySelectorAll('.halaman-input').forEach(hal => {
+        if (hal.classList.contains('halaman-gambar')) {
+          halamanList.push({
+            tipe: 'gambar',
+            base64: hal.querySelector('.data-gambar-halaman')?.value || '',
+            teksAtas: hal.querySelector('.teks-atas-gambar')?.innerHTML || '',
+            teksBawah: hal.querySelector('.teks-bawah-gambar')?.innerHTML || ''
+          });
+          return;
+        }
+        if (hal.classList.contains('halaman-profil')) {
+          halamanList.push({
+            tipe: 'profil',
+            penyusun: hal.querySelector('.profil-penyusun')?.value || '',
+            pengarang: hal.querySelector('.profil-pengarang')?.value || '',
+            terbitOnline: hal.querySelector('.profil-terbit-online')?.value || '',
+            penerbit: hal.querySelector('.profil-penerbit')?.value || '',
+            keteranganHtml: hal.querySelector('.profil-keterangan')?.innerHTML || ''
+          });
+          return;
+        }
+        if (hal.classList.contains('halaman-daftarisi')) {
+          halamanList.push({
+            tipe: 'daftarisi',
+            teks: hal.querySelector('.daftarisi-input')?.value || ''
+          });
+          return;
+        }
+        if (hal.classList.contains('halaman-pegon')) {
+          halamanList.push({ tipe: 'pegon' });
+          return;
+        }
+        if (hal.classList.contains('halaman-daftarkode')) {
+          halamanList.push({
+            tipe: 'daftarkode',
+            teksDiucapkan: hal.querySelector('.daftarkode-input-diucapkan')?.value || '',
+            teksTidak: hal.querySelector('.daftarkode-input-tidak')?.value || ''
+          });
+          return;
+        }
+        if (hal.classList.contains('halaman-judul')) {
+          halamanList.push({
+            tipe: 'judul',
+            arab: hal.querySelector('.judul-besar-arab')?.value || '',
+            indo: hal.querySelector('.judul-besar-indo')?.value || '',
+            jawa: hal.querySelector('.judul-besar-jawa')?.value || '',
+            sub: hal.querySelector('.judul-besar-sub')?.value || '',
+            overridePegon: hal.querySelector('.input-override-pegon')?.value || ''
+          });
+          return;
+        }
+        if (hal.classList.contains('halaman-pengantar')) {
+          halamanList.push({
+            tipe: 'pengantar',
+            isi: hal.querySelector('.pengantar-input')?.innerHTML || ''
+          });
+          return;
+        }
+        const nahwu = hal.querySelector('.nahwu-input').innerHTML;
+        const babList = [];
+        hal.querySelectorAll('.bab-input, .syiir-input').forEach(bab => {
+          if (bab.classList.contains('syiir-input')) {
+            const model = bab.querySelector('.syiir-model-select')?.value || 'A';
+            const baitList = [];
+            bab.querySelectorAll('.syiir-bait').forEach(baitEl => {
+              const baitId = baitEl.id.replace('bait-','');
+              const ambilKata = (shatr) => {
+                const container = baitEl.querySelector(`#kata${shatr}-${baitId}`);
+                if (!container) return [];
+                return [...container.querySelectorAll('.syiir-kata-item')].map(item => ({
+                  arab: item.querySelector('.s-arab')?.value || '',
+                  kode: item.querySelector('.s-kode')?.value || '',
+                  maknaIndo: item.querySelector('.s-indo')?.value || '',
+                  maknaJawa: item.querySelector('.s-jawa')?.value || '',
+                  geserPegon: item.querySelector('.s-geser')?.value || '',
+                }));
+              };
+              baitList.push({ awwal: ambilKata('Awwal'), tsani: ambilKata('Tsani') });
+            });
+            babList.push({ tipe: 'syiir', model, baitList });
+            return;
+          }
+          const babId = bab.id.replace('bab-', '');
+          const namaBab = bab.querySelector('.bab-nama-input').value;
+          const tbody = document.getElementById('tbody-' + babId);
+          const kataList = [];
+          tbody?.querySelectorAll('tr').forEach(tr => {
+            kataList.push({
+              kode: tr.querySelector('.kode-input').value,
+              arab: tr.querySelector('.arab-input').value,
+              maknaIndo: tr.querySelector('.makna-indo').value,
+              maknaJawa: tr.querySelector('.makna-jawa').value,
+              nomor: tr.querySelector('.nom-input').value,
+              krKanan: tr.querySelector('.kr-kanan-cb').checked,
+              geserPegon: tr.querySelector('.geser-pegon-input')?.value || '',
+            });
+          });
+          babList.push({
+            namaBab,
+            babJudulIndo: bab.querySelector('.bab-judul-indo')?.value || '',
+            babJudulJawa: bab.querySelector('.bab-judul-jawa')?.value || '',
+            babNomor: bab.querySelector('.bab-judul-nomor')?.value || '',
+            kataList
+          });
+        });
+        // Kumpulkan nomor ayat di halaman ini untuk filter terjemahan
+        const nomorList = [];
+        hal.querySelectorAll('.nom-input').forEach(inp => {
+          if (inp.value) nomorList.push(inp.value);
+        });
+        const terjemahanHalaman = {};
+        nomorList.forEach(n => {
+          if (terjemahanData[n]) terjemahanHalaman[n] = terjemahanData[n];
+        });
+
+        halamanList.push({
+   nahwu,
+   judulNahwu: hal.querySelector('.nahwu-judul-input')?.value || '',
+   babList,
+   terjemahan: terjemahanHalaman,
+   overridePegon: hal.querySelector('.input-override-pegon-indo')?.value || '',
+   overridePegonJawa: hal.querySelector('.input-override-pegon-jawa')?.value || '',
+   overrideBaris: hal.querySelector('.input-override-baris')?.value || '',
+   overrideNomHlm: hal.querySelector('.input-override-nomhlm')?.value || 0,
+   overrideColGap: hal.querySelector('.input-override-colgap')?.value || '',
+   overrideMinKata: hal.querySelector('.input-override-minkata')?.value || '',
+   overridePengaliDefault: hal.querySelector('.input-override-pengali-default')?.value || '',
+   overrideRapat: hal.querySelector('.input-override-rapat')?.value || '',
+   lebarKolom: hal.dataset.lebarKolom ? JSON.parse(hal.dataset.lebarKolom) : {}
+});
+   
+    });
+         return {
+                   versi: 3,
+        judulKitab: document.getElementById('judulKitab').value,
+        judulArab: document.getElementById('judulArab').value,
+        namaUstaz: document.getElementById('namaUstaz').value,
+        keterangan: document.getElementById('keterangan').value,
+        tahunKitab: document.getElementById('tahunKitab').value,
+        edisiKitab: document.getElementById('edisiKitab').value,
+        pengantarKitab: document.getElementById('pengantarKitab').innerHTML,
+        halamanList
+      };
+    }
+
+    function flattenBarisList(barisList) {
+      const result = [];
+      (barisList || []).forEach(baris => {
+        const kata = baris.kataList || [];
+        kata.forEach((k, i) => {
+          result.push({
+            kode: k.kode || '',
+            arab: k.arab || '',
+            maknaIndo: k.maknaIndo || k.makna || '',
+            maknaJawa: k.maknaJawa || '',
+            nomor: i === kata.length - 1 ? (baris.nomor || '') : '',
+          });
+        });
+      });
+      return result;
+    }
+
+    function migrasi(data) {
+      if (data.versi === 3) return data;
+      let halamanList = [];
+      if (data.versi === 2 && data.halamanList) {
+        halamanList = data.halamanList.map(h => ({
+          nahwu: h.nahwu || '',
+          babList: (h.babList || []).map(b => ({
+            namaBab: b.namaBab || '',
+            kataList: b.kataList || flattenBarisList(b.barisList || [])
+          }))
+        }));
+      } else {
+        const br = data.babList || (data.barisList ? [{
+          namaBab: 'Bab 1',
+          barisList: data.barisList
+        }] : []);
+        halamanList = [{
+          nahwu: data.catatanNahwu || '',
+          babList: br.map(b => ({
+            namaBab: b.namaBab || '',
+            kataList: flattenBarisList(b.barisList || [])
+          }))
+        }];
+      }
+      return {
+        versi: 3,
+        judulKitab: data.judulKitab || '',
+        judulArab: data.judulArab || '',
+        namaUstaz: data.namaUstaz || '',
+        keterangan: data.keterangan || '',
+        tahunKitab: data.tahunKitab || '',
+        edisiKitab: data.edisiKitab || '',
+        pengantarKitab: data.pengantarKitab || '',
+        halamanList
+      };
+    }
+
+    function terapkanData(data) {
+      data = migrasi(data);
+      document.getElementById('judulKitab').value = data.judulKitab || '';
+      document.getElementById('judulArab').value = data.judulArab || '';
+      document.getElementById('namaUstaz').value = data.namaUstaz || '';
+      document.getElementById('keterangan').value = data.keterangan || '';
+      document.getElementById('tahunKitab').value = data.tahunKitab || '';
+      document.getElementById('edisiKitab').value = data.edisiKitab || '';
+      document.getElementById('pengantarKitab').innerHTML = data.pengantarKitab || '';
+      if (data.halamanList && data.halamanList.length) {
+        data.halamanList.forEach(h => {
+          if (h.tipe === 'judul') tambahHalamanJudul(h);
+          else if (h.tipe === 'pengantar') tambahHalamanPengantar(h);
+          else if (h.tipe === 'gambar') tambahHalamanGambar(h);
+          else if (h.tipe === 'profil') tambahHalamanProfil(h);
+          else if (h.tipe === 'daftarisi') tambahHalamanDaftarIsi(h);
+          else if (h.tipe === 'pegon') tambahHalamanPegon(h);
+          else if (h.tipe === 'daftarkode') tambahHalamanDaftarKode(h);
+          else tambahHalaman(h.babList || [], h.nahwu || '', h.terjemahan || {}, h.overridePegon || '', h.overrideBaris || '', h.overrideNomHlm || 0, h.overrideColGap || '', h.lebarKolom || {}, h.overridePegonJawa || '', h.overrideMinKata || '', h.overridePengaliDefault || '', h.overrideRapat || '', h.judulNahwu || '');
+        });
+        data.halamanList.forEach(h => {
+          if (h.terjemahan) Object.assign(terjemahanData, h.terjemahan);
+        });
+      } else {
+        tambahHalaman();
+      }
+      updateTombolHalamanTetap();
+    }
+
+    function muat() {
+      // muat() sekarang async — kembalikan Promise
+      return muatDB().then(data => {
+        if (data) {
+          terapkanData(data);
+          // Hapus localStorage lama jika masih ada
+          try { localStorage.removeItem('gandul_data'); } catch(e) {}
+          return true;
+        }
+        // Fallback: cek localStorage lama (migrasi sekali)
+        const raw = localStorage.getItem('gandul_data');
+        if (!raw) return false;
+        try {
+          const parsed = JSON.parse(raw);
+          terapkanData(parsed);
+          // Pindahkan ke IndexedDB, hapus localStorage
+          return simpanDB(migrasi(parsed)).then(() => {
+            try { localStorage.removeItem('gandul_data'); } catch(e) {}
+            return true;
+          });
+        } catch { return false; }
+      }).catch(() => {
+        // Kalau IndexedDB gagal total, coba localStorage
+        const raw = localStorage.getItem('gandul_data');
+        if (!raw) return false;
+        try { terapkanData(JSON.parse(raw)); return true; }
+        catch { return false; }
+      });
+    }
+
+    function exportJSON() {
+  const blob = new Blob([JSON.stringify(ambilSemuaData(), null, 2)], {
+    type: 'application/json'
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gandul-data.json';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const notif = document.getElementById('notif');
+      notif.textContent = '⏳ Mengimpor...';
+      notif.classList.add('tampil');
+      const reader = new FileReader();
+      reader.onload = e => {
+        setTimeout(() => {
+          try {
+            const data = JSON.parse(e.target.result);
+            simpanDB(data).then(() => {
+              try { localStorage.removeItem('gandul_data'); } catch(ex) {}
+              notif.textContent = '✓ Tersimpan!';
+              setTimeout(() => {
+                notif.classList.remove('tampil');
+                notif.textContent = '✓ Tersimpan!';
+                location.reload();
+              }, 800);
+            }).catch(() => {
+              alert('Gagal menyimpan ke IndexedDB!');
+              notif.classList.remove('tampil');
+            });
+          } catch {
+            alert('File tidak valid!');
+            notif.classList.remove('tampil');
+          }
+        }, 100);
+      };
+      reader.readAsText(file);
+    }
+
+    function resetTampilan() {
+      document.getElementById('hasil').innerHTML = '<div style="text-align:center;color:#40916c;font-style:italic;font-size:13px;padding:30px 0;">Hasil makna gandul akan tampil di sini</div>';
+      document.getElementById('navBab').style.display = 'none';
+      updateNavHasil([]);
+    }
+
+    function resetSemua() {
+      if (!confirm('Yakin ingin mereset semua data? Semua yang belum disimpan akan hilang.')) return;
+      hapusDB().catch(() => {}); try { localStorage.removeItem('gandul_data'); } catch(e) {}
+      document.getElementById('containerHalaman').innerHTML = '';
+      ['judulKitab', 'judulArab', 'namaUstaz', 'keterangan', 'tahunKitab', 'edisiKitab'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('pengantarKitab').innerHTML = '';
+      halamanCounter = 0;
+      babCounter = 0;
+      kataCounter = 0;
+      pegonTersembunyi = false;
+      kodeTersembunyi = false;
+      modeBahasa = 'indo';
+      document.getElementById('togPegon').textContent = 'Sembunyikan Pegon';
+      document.getElementById('togPegon').classList.remove('aktif');
+      document.getElementById('togKode').textContent = 'Sembunyikan Kode';
+      document.getElementById('togKode').classList.remove('aktif');
+      document.getElementById('togBahasa').textContent = 'Pegon Jawa';
+      document.getElementById('togBahasa').classList.remove('aktif');
+      resetTampilan();
+      init();
+    }
+
+    // ============================================================
+    // MODE ADMIN — sembunyikan tombol maintenance (Export/Import
+    // JSON) dari pembaca biasa, tampilkan khusus di device Ustaz
+    // lewat 5x ketuk cepat pada tulisan "Coding by Claude" di footer.
+    // Tersimpan per-device via localStorage.
+    // ============================================================
+    let _tapAdminCount = 0;
+    let _tapAdminTimer = null;
+    function ketukAdmin(e) {
+      _tapAdminCount++;
+      clearTimeout(_tapAdminTimer);
+      _tapAdminTimer = setTimeout(() => { _tapAdminCount = 0; }, 2500);
+      const el = e && e.target;
+      if (el) {
+        el.style.color = '#2d6a4f';
+        setTimeout(() => { el.style.color = '#9ca3af'; }, 150);
+      }
+      if (_tapAdminCount >= 5) {
+        _tapAdminCount = 0;
+        const aktifSekarang = localStorage.getItem('albidayah_admin') === '1';
+        setModeAdmin(!aktifSekarang);
+        alert(aktifSekarang
+          ? '🔒 Tombol maintenance disembunyikan lagi di device ini.'
+          : '🔓 Tombol maintenance (Export/Import JSON) ditampilkan di device ini.');
+      }
+    }
+    function setModeAdmin(aktif) {
+      try { localStorage.setItem('albidayah_admin', aktif ? '1' : '0'); } catch(e) {}
+      const wrap = document.getElementById('wrapMaintenance');
+      if (wrap) wrap.style.display = aktif ? '' : 'none';
+    }
+    function initModeAdmin() {
+      try { setModeAdmin(localStorage.getItem('albidayah_admin') === '1'); } catch(e) {}
+    }
+
+    function init() {
+      initModeAdmin();
+      muat().then(berhasil => {
+        updateNavInput();
+        updateNavHasil([]);
+        setTimeout(() => observeHalaman(), 500);
+        if (berhasil) {
+          tampilkan('html');
+        } else {
+          document.getElementById('hasil').innerHTML =
+            '<div style="text-align:center;color:#6b7280;font-style:italic;font-size:13px;padding:30px 0;">Belum ada data kitab yang tersimpan.</div>';
+        }
+      }).catch(e => {
+        document.getElementById('hasil').innerHTML =
+          '<div style="text-align:center;color:#dc2626;font-size:13px;padding:30px 0;">Gagal memuat data. Cek koneksi internet lalu muat ulang halaman.<br><span style="font-size:10px;color:#6b7280;">(' + e.message + ')</span></div>';
+      });
+    }
+    init();
+  </script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+</body>
+
+</html>
