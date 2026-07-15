@@ -3596,4 +3596,449 @@ function gotoHalamanHasil() {
   div.innerHTML = `
     <div class="halaman-header">
       <span class="halaman-label">📄 Halaman ${id+1}</span>
-      <button class="btn-hapus-halaman" onclic
+    <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+    </div>
+    <div class="halaman-body">
+      <div id="containerBab-${id}"></div>
+      <button class="btn-tambah-bab" onclick="tambahBab(${id})">+ Tambah Bab</button>
+      <button class="btn-tambah-bab" style="background:#b7950b;" onclick="tambahBabSyiir(${id})">🎵 Bab Syi'ir</button>
+      <div class="nahwu-input-wrap">
+        <label>Catatan Nahwu — Halaman ${id+1}</label>
+        <input class="nahwu-judul-input" type="text" placeholder="Judul Catatan Nahwu (kosongkan = otomatis ambil baris pertama)" value="${judulNahwu||''}" style="width:100%;margin-bottom:6px;" />
+        ${buatRTE('nahwu-input', nahwu, 'Catatan nahwu untuk halaman ini...', true)}
+      </div>
+      <div class="terjemahan-input-wrap" id="terjWrap-${id}">
+        <div class="terj-header" onclick="toggleTerj(${id})" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+          <span class="terj-toggle-icon" id="terjIcon-${id}">▶</span>
+          <label style="cursor:pointer;margin:0;">Terjemahan Ayat — Halaman ${id+1}</label>
+        </div>
+        <div class="terj-body" id="terjBody-${id}" style="display:none;">
+          <button class="btn-muat-ayat" onclick="muatNomorAyat(${id})">⟳ Muat Nomor Ayat</button>
+          <div class="terjemahan-fields" id="terjFields-${id}"></div>
+        </div>
+ </div>
+ <div class="field-override-pegon">
+  <label>Override Pegon Indo (contoh: فقير:0.8)</label>
+  <input type="text" class="input-override-pegon input-override-pegon-indo" placeholder="arabawal:pengali, arablalin:pengali" value="${overridePegon||''}" oninput="simpan(); sesuaikanLebarPegon();">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Pegon Jawa (contoh: فقير:0.8)</label>
+  <input type="text" class="input-override-pegon input-override-pegon-jawa" placeholder="arabawal:pengali, arablalin:pengali" value="${overridePegonJawa||''}" oninput="simpan(); sesuaikanLebarPegon();">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Jarak Baris (contoh: 1:30, 3:10)</label>
+  <input type="text" class="input-override-baris" placeholder="nomorBaris:rowGap(px), ..." value="${overrideBaris||''}" oninput="simpan()">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Posisi Nomor Halaman (px, bisa negatif)</label>
+  <input type="number" class="input-override-nomhlm" placeholder="0" value="${overrideNomHlm||0}" oninput="simpan()">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;background:#fef9e7;">
+  <label>🔧 Rapatkan Kata (%) — 100=normal, 0=paling rapat (contoh: 1:60, 3:50)</label>
+  <input type="text" class="input-override-rapat" placeholder="nomorBaris:persen, ..." value="${overrideRapat||''}" oninput="terapkanRapatkanKata(this); simpan(); sesuaikanLebarPegon();">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Column Gap (contoh: 1:8, 2:4)</label>
+  <input type="text" class="input-override-colgap" placeholder="nomorBaris:gap(px), ..." value="${overrideColGap||''}" oninput="simpan()">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Lebar Minimum Kata (contoh: 1:40, 2:50 — default 68px, tdk bisa minus)</label>
+  <input type="text" class="input-override-minkata" placeholder="nomorBaris:lebar(px, min 0), ..." value="${overrideMinKata||''}" oninput="simpan()">
+</div>
+<div class="field-override-pegon" style="margin-top:6px;">
+  <label>Override Pengali Lebar Pegon Default (contoh: 1:0.8 — default 1.3x lebar Arab)</label>
+  <input type="text" class="input-override-pengali-default" placeholder="nomorBaris:pengali, ..." value="${overridePengaliDefault||''}" oninput="simpan(); sesuaikanLebarPegon();">
+</div>
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  if (babList.length) babList.forEach(b => {
+    if (b.tipe === 'syiir') tambahBabSyiir(id, b);
+    else tambahBab(id, b.namaBab, b.kataList, b.babJudulIndo || '', b.babJudulJawa || '', b.babNomor || '');
+  });
+  else tambahBab(id);
+  // Isi terjemahan jika ada (dari import JSON)
+  if (Object.keys(terjemahan).length) {
+    setTimeout(() => isiTerjemahanFields(id, terjemahan), 300);
+  }
+   const lebarAwal = Object.keys(lebarKolom).length ? lebarKolom : lebarKolomDefault;
+  if (Object.keys(lebarAwal).length) {
+    div.dataset.lebarKolom = JSON.stringify(lebarAwal);
+    setTimeout(() => terapkanLebarKolom(div), 100);
+  }
+    
+  halamanObserver.observe(div);
+  updateNavInput();
+}
+    
+    function muatNomorAyat(halamanId) {
+  const hal = document.getElementById('halaman-' + halamanId);
+  const fieldsEl = document.getElementById('terjFields-' + halamanId);
+  if (!hal || !fieldsEl) return;
+
+  // Kumpulkan semua nomor ayat unik di halaman ini
+  const nomorSet = new Set();
+  hal.querySelectorAll('.nom-input').forEach(inp => {
+    const val = inp.value.trim();
+    if (val) nomorSet.add(val);
+  });
+
+  if (!nomorSet.size) {
+    fieldsEl.innerHTML = '<div style="font-size:12px;color:#6b7280;padding:6px 0;">Belum ada nomor ayat di halaman ini.</div>';
+    return;
+  }
+
+  fieldsEl.innerHTML = '';
+  nomorSet.forEach(nomor => {
+    const existing = terjemahanData[nomor] || {};
+    fieldsEl.innerHTML += `
+      <div class="terj-item" data-nomor="${nomor}">
+        <div class="terj-nomor">Ayat ${nomor}</div>
+        ${buatRTE('terj-indo', existing.indo || '', 'Terjemah Indonesia...', false)}
+        ${buatRTE('terj-en', existing.en || '', 'English translation...', false)}
+      </div>
+    `;
+  });
+
+  // Simpan otomatis saat diketik
+  fieldsEl.querySelectorAll('.terj-item').forEach(item => {
+    const nomor = item.dataset.nomor;
+    item.querySelector('.terj-indo').addEventListener('input', e => {
+      if (!terjemahanData[nomor]) terjemahanData[nomor] = {};
+      terjemahanData[nomor].indo = e.target.innerHTML;
+    });
+    item.querySelector('.terj-en').addEventListener('input', e => {
+      if (!terjemahanData[nomor]) terjemahanData[nomor] = {};
+      terjemahanData[nomor].en = e.target.innerHTML;
+    });
+  });
+}
+
+function isiTerjemahanFields(halamanId, terjemahan) {
+  Object.assign(terjemahanData, terjemahan);
+  muatNomorAyat(halamanId);
+}
+
+    function tambahHalamanJudul(data = {}) {
+      const id = halamanCounter++;
+      const div = document.createElement('div');
+      div.className = 'halaman-input halaman-judul';
+      div.id = 'halaman-' + id;
+      div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">📄 Halaman ${id+1}</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <div class="judul-besar-grid">
+        <input class="judul-besar-arab" type="text" placeholder="عنوان الفصل الكبير" value="${data.arab||''}" style="direction:rtl;font-size:20px;width:100%;" />
+        <input class="judul-besar-indo" type="text" placeholder="Terjemah Indonesia..." value="${data.indo||''}" style="width:100%;" />
+        <input class="judul-besar-jawa" type="text" placeholder="Terjemah Jawa..." value="${data.jawa||''}" style="width:100%;" />
+        <input class="judul-besar-sub" type="text" placeholder="Keterangan tambahan (opsional)..." value="${data.sub||''}" style="width:100%;" />
+      </div>
+    </div>
+  `;
+      document.getElementById('containerHalaman').appendChild(div);
+      halamanObserver.observe(div);
+      updateNavInput();
+    }
+    // (Pindah ke posisi tertentu sekarang lewat menu ≡ Input → "Pindah ke posisi...")
+    function tambahHalamanPengantar(data = {}) {
+      const id = halamanCounter++;
+      const div = document.createElement('div');
+      div.className = 'halaman-input halaman-pengantar';
+      div.id = 'halaman-' + id;
+      div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">📜 Halaman ${id+1} (Pengantar)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      ${buatRTE('pengantar-input', data.isi || '', 'Tulis pengantar, muqaddimah, atau kata sambutan di sini...', false)}
+    </div>
+  `;
+      document.getElementById('containerHalaman').appendChild(div);
+      halamanObserver.observe(div);
+      updateNavInput();
+    }
+    function tambahHalamanGambar(data = {}) {
+  const id = halamanCounter++;
+  const div = document.createElement('div');
+  div.className = 'halaman-input halaman-gambar';
+  div.id = 'halaman-' + id;
+  div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">🖼️ Halaman ${id+1} (Gambar)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <input type="file" accept="image/*" class="input-gambar-halaman" onchange="bacaGambarHalaman(this, 'halaman-${id}')" style="width:100%;" />
+      <input type="hidden" class="data-gambar-halaman" value="${data.base64||''}" />
+      <div class="preview-gambar-halaman" style="margin-top:8px;text-align:center;">
+        ${data.base64?`<img src="${data.base64}" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid #2d6a4f;">`:''}
+      </div>
+      <label style="font-size:10px;color:#6b7280;letter-spacing:1px;text-transform:uppercase;display:block;margin-top:8px;margin-bottom:4px;">Teks Atas Gambar (opsional)</label>
+      ${buatRTE('teks-atas-gambar', data.teksAtas||'', 'Teks atas gambar...', true)}
+      <label style="font-size:10px;color:#6b7280;letter-spacing:1px;text-transform:uppercase;display:block;margin-top:8px;margin-bottom:4px;">Teks Bawah Gambar (opsional)</label>
+      ${buatRTE('teks-bawah-gambar', data.teksBawah||'', 'Teks bawah gambar...', true)}
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  halamanObserver.observe(div);
+  updateNavInput();
+}
+
+function bacaGambarHalaman(input, halId) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const hal = document.getElementById(halId);
+    hal.querySelector('.data-gambar-halaman').value = e.target.result;
+    hal.querySelector('.preview-gambar-halaman').innerHTML =
+      `<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid #2d6a4f;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Halaman Tetap (singleton): Profil Kitab, Daftar Isi, Penjelasan Pegon, Daftar Kode ──
+function halamanTetapSudahAda(kelas) {
+  return document.querySelector('.halaman-input.' + kelas);
+}
+function updateTombolHalamanTetap() {
+  [
+    ['halaman-profil', 'btnTambahProfil'],
+    ['halaman-daftarisi', 'btnTambahDaftarIsi'],
+    ['halaman-pegon', 'btnTambahPegon'],
+    ['halaman-daftarkode', 'btnTambahDaftarKode']
+  ].forEach(([kelas, btnId]) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    const ada = halamanTetapSudahAda(kelas);
+    btn.disabled = !!ada;
+    btn.style.opacity = ada ? '0.5' : '1';
+    btn.title = ada ? 'Sudah ada di dokumen — hapus dulu untuk membuat ulang' : '';
+  });
+}
+
+function tambahHalamanProfil(data = {}) {
+  if (halamanTetapSudahAda('halaman-profil')) { return; }
+  const id = halamanCounter++;
+  const div = document.createElement('div');
+  div.className = 'halaman-input halaman-profil';
+  div.id = 'halaman-' + id;
+  div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">🪪 Halaman ${id+1} (Profil Kitab)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <p style="font-size:11px;color:#6b7280;margin:0 0 8px;">Judul kitab &amp; tahun diambil otomatis dari Identitas Kitab di atas. Lengkapi sisanya:</p>
+      <input class="profil-penyusun" type="text" placeholder="Terjemah dan Aplikasi (nama penyusun/penerjemah)" value="${data.penyusun||''}" style="width:100%;margin-bottom:6px;" />
+      <input class="profil-pengarang" type="text" placeholder="Pengarang Kitab Asli (nama &amp; tahun, mis: Syaikh ... (1783-1860))" value="${data.pengarang||''}" style="width:100%;margin-bottom:6px;" />
+      <input class="profil-terbit-online" type="text" placeholder="Terbit Online (mis: Juli 2026)" value="${data.terbitOnline||''}" style="width:100%;margin-bottom:6px;" />
+      <input class="profil-penerbit" type="text" placeholder="Penerbit (opsional)" value="${data.penerbit||''}" style="width:100%;margin-bottom:6px;" />
+      <label style="font-size:10px;color:#6b7280;letter-spacing:1px;text-transform:uppercase;display:block;margin-top:8px;margin-bottom:4px;">Keterangan Penggunaan (mis: pertama diajarkan di...)</label>
+      ${buatRTE('profil-keterangan', data.keteranganHtml||'', 'Digunakan untuk kali pertama di... Tahun Ajaran...', false)}
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  halamanObserver.observe(div);
+  updateNavInput();
+  updateTombolHalamanTetap();
+}
+
+function tambahHalamanDaftarIsi(data = {}) {
+  if (halamanTetapSudahAda('halaman-daftarisi')) { return; }
+  const id = halamanCounter++;
+  const div = document.createElement('div');
+  div.className = 'halaman-input halaman-daftarisi';
+  div.id = 'halaman-' + id;
+  div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">📑 Halaman ${id+1} (Daftar Isi)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <button type="button" class="btn-tool" style="margin-bottom:8px;" onclick="generateDaftarIsi('halaman-${id}')">🔄 Generate dari Bab</button>
+      <p style="font-size:10.5px;color:#6b7280;margin:0 0 6px;">Satu baris = satu entri, format: <b>Nama Bab | Nomor Halaman</b>. Bisa diedit/dihapus/ditambah manual.</p>
+      <textarea class="daftarisi-input" placeholder="Bab 1: Muqaddimah | 1" style="width:100%;min-height:160px;font-family:Georgia,serif;font-size:13px;padding:6px;border:1px solid #d8f3dc;border-radius:4px;" oninput="simpan()">${data.teks||''}</textarea>
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  halamanObserver.observe(div);
+  updateNavInput();
+  updateTombolHalamanTetap();
+}
+
+function hitungNomorHalaman() {
+  // Menghitung nomor halaman untuk setiap .halaman-input sesuai skema:
+  // Cover kitab (cover-kitab) = tidak dihitung
+  // Halaman Judul & Profil Kitab = dihitung tapi nomor tidak tampil
+  // Semua lainnya = dihitung dan nomor tampil
+  // Mengembalikan Map: halId -> { nomor, tampilNomor }
+  const map = new Map();
+  let counter = 0;
+  document.querySelectorAll('.halaman-input').forEach(h => {
+    const halId = h.id;
+    if (h.classList.contains('halaman-judul') || h.classList.contains('halaman-profil') || h.classList.contains('halaman-pengantar')) {
+      counter++;
+      map.set(halId, { nomor: counter, tampilNomor: false });
+    } else {
+      counter++;
+      map.set(halId, { nomor: counter, tampilNomor: true });
+    }
+  });
+  return map;
+}
+
+function ambilJudulNahwu(nahwuHtml, manualJudul) {
+  const manual = (manualJudul || '').trim();
+  if (manual) return manual;
+  const html = (nahwuHtml || '').trim();
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  let firstLine = '';
+  for (const node of Array.from(tmp.childNodes)) {
+    if (node.nodeType === 1 && /^(DIV|P)$/i.test(node.tagName)) {
+      // Node pertama sudah berupa blok baris (mis: <div>Judul</div><div>Isi...</div>)
+      if (!firstLine.trim()) { firstLine = node.textContent || ''; }
+      break;
+    }
+    if (node.nodeType === 1 && /^BR$/i.test(node.tagName)) {
+      break; // akhir baris pertama
+    }
+    firstLine += node.textContent || '';
+  }
+  return firstLine.replace(/\s+/g, ' ').trim();
+}
+function generateDaftarIsi(halId) {
+  const hal = document.getElementById(halId);
+  if (!hal) return;
+  const baris = [];
+  const nomorMap = hitungNomorHalaman();
+  const semuaHalaman = [...document.querySelectorAll('.halaman-input')];
+  let nomorNahwu = 0;
+  semuaHalaman.forEach(h => {
+    if (h === hal) return; // skip halaman daftarisi sendiri
+    const info = nomorMap.get(h.id);
+    const nomHal = info ? info.nomor : '';
+
+    // Bab biasa
+    h.querySelectorAll('.bab-input').forEach(bab => {
+      const arab = bab.querySelector('.bab-nama-input')?.value.trim() || '';
+      const indo = bab.querySelector('.bab-judul-indo')?.value.trim() || '';
+      const nama = arab && indo ? `${arab} - ${indo}` : (arab || indo);
+      if (nama) baris.push(`${nama} | ${nomHal}`);
+    });
+    // Syi'ir
+    h.querySelectorAll('.syiir-input').forEach(() => {
+      baris.push(`Syi'ir | ${nomHal}`);
+    });
+    // Catatan Nahwu
+    const nahwuEl = h.querySelector('.nahwu-input');
+    function htmlAdaIsiLocal(s) { return !!(s||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/gi,'').trim(); }
+    if (nahwuEl && htmlAdaIsiLocal(nahwuEl.innerHTML)) {
+      nomorNahwu++;
+      const manualJudulDI = h.querySelector('.nahwu-judul-input')?.value || '';
+      const judulNahwuDI = ambilJudulNahwu(nahwuEl.innerHTML, manualJudulDI);
+      baris.push(`Catatan Nahwu ke-${nomorNahwu}${judulNahwuDI?`: ${judulNahwuDI}`:''} | ${nomHal}`);
+    }
+  });
+  const ta = hal.querySelector('.daftarisi-input');
+  if (ta) {
+    ta.value = baris.length ? baris.join('\n') : '(Belum ada Bab di dokumen)';
+    simpan();
+  }
+}
+
+function tambahHalamanPegon(data = {}) {
+  if (halamanTetapSudahAda('halaman-pegon')) { return; }
+  const id = halamanCounter++;
+  const div = document.createElement('div');
+  div.className = 'halaman-input halaman-pegon';
+  div.id = 'halaman-' + id;
+  div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">🔤 Halaman ${id+1} (Penjelasan Pegon)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <p style="font-size:11px;color:#6b7280;margin:0;">Konten halaman ini baku (mengikuti standar Pegon) dan otomatis tampil saat ditambahkan. Tidak perlu diisi manual.</p>
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  halamanObserver.observe(div);
+  updateNavInput();
+  updateTombolHalamanTetap();
+}
+
+function tambahHalamanDaftarKode(data = {}) {
+  if (halamanTetapSudahAda('halaman-daftarkode')) { return; }
+  const id = halamanCounter++;
+  const div = document.createElement('div');
+  div.className = 'halaman-input halaman-daftarkode';
+  div.id = 'halaman-' + id;
+  const defaultDiucapkan = [
+    ['م','أتا وي','','مُبْتَدَأٌ'],
+    ['خ','إيكو','','خَبَرٌ'],
+    ['ص','كع','','صِفَةٌ'],
+    ['ف','أفا','','فَاعِلٌ (غَيْرُ عَاقِلْ)'],
+    ['فا','سفا','','فَاعِلٌ (عَاقِلْ)'],
+    ['مف','إع','','مَفْعُوْلٌ بِهِ'],
+    ['حا','حالي','','حَالٌ'],
+    ['ب','روفاني','','بَدَلٌ'],
+    ['مط','كلاوان','','مَفْعُوْلٌ مُطْلَقٌ'],
+    ['ج','موعكو','','جَوَابٌ'],
+    ['ما','ماريع','','–'],
+    ['لد','كدوي','','–'],
+    ['خم','إيكو موجود','','–'],
+    ['ظ','إعدالم','','ظَرْفٌ']
+  ];
+  const defaultTidak = [
+    ['جم','جَرْ مَجْرُوْر'],
+    ['إضا','إِضَافَة'],
+    ['فما','فِعْل مَاضِي'],
+    ['مضا','فِعْل مُضَارِع'],
+    ['فأ','فِعْل أَمْر']
+  ];
+  const teksDefaultDiucapkan = data.teksDiucapkan || data.teks || defaultDiucapkan.map(([r,mj,mi,kp]) => `${r} | ${mj} | ${mi} | ${kp}`).join('\n');
+  const teksDefaultTidak = data.teksTidak || defaultTidak.map(([r,kp]) => `${r} | ${kp}`).join('\n');
+  div.innerHTML = `
+    <div class="halaman-header">
+  <span class="halaman-label">🔣 Halaman ${id+1} (Daftar Kode Gramatikal)</span>
+  <button class="btn-hapus-halaman" onclick="hapusHalaman('halaman-${id}')">Hapus Halaman</button>
+</div>
+    <div class="halaman-body">
+      <p style="font-size:10.5px;color:#6b7280;margin:0 0 4px;font-weight:bold;">Kode-Kode yang Diucapkan</p>
+      <p style="font-size:10.5px;color:#6b7280;margin:0 0 6px;">Satu baris = satu kode, format: <b>Rumus/Kode | Makna Jawa | Makna Indo | Kepanjangan</b> (kosongkan Makna Indo kalau belum ada, pakai "–" untuk Kepanjangan kalau tidak ada bentuk panjangnya)</p>
+      <textarea class="daftarkode-input-diucapkan" style="width:100%;min-height:220px;font-family:Georgia,serif;font-size:13px;padding:6px;border:1px solid #d8f3dc;border-radius:4px;direction:ltr;" oninput="simpan()">${teksDefaultDiucapkan}</textarea>
+      <p style="font-size:10.5px;color:#6b7280;margin:12px 0 4px;font-weight:bold;">Kode-Kode yang Tidak Diucapkan</p>
+      <p style="font-size:10.5px;color:#6b7280;margin:0 0 6px;">Satu baris = satu kode, format: <b>Rumus/Kode | Kepanjangan</b></p>
+      <textarea class="daftarkode-input-tidak" style="width:100%;min-height:100px;font-family:Georgia,serif;font-size:13px;padding:6px;border:1px solid #d8f3dc;border-radius:4px;direction:ltr;" oninput="simpan()">${teksDefaultTidak}</textarea>
+    </div>
+  `;
+  document.getElementById('containerHalaman').appendChild(div);
+  halamanObserver.observe(div);
+  updateNavInput();
+  updateTombolHalamanTetap();
+}
+
+    function bukaModalPindahHalaman() {
+      const semua = [...document.querySelectorAll('.halaman-input')];
+      const posAktif = halamanAktifId ? semua.findIndex(h => h.id === halamanAktifId) + 1 : 0;
+      document.getElementById('labelHalamanAktif').textContent = posAktif ? `Halaman ${posAktif}` : 'Tidak terdeteksi';
+      document.getElementById('inputKe').value = '';
+      document.getElementById('modalPindahHalaman').style.display = 'block';
+      document.getElementById('modalBoxPindahHalaman').style.display = 'block';
+    }
+
+    function tutupFloatDropdown() {
+      document.querySelectorAll('.float-dropdown-menu').forEach(m => m.classList.remove('aktif'));
+    }
+
+    function tutupModalPindahHalaman() {
+      document.getElementById('modalPindahHalaman').style.display = 'none';
+      document.getElementById('modalBoxPindahHalaman').style.display = 'none';
+    }
