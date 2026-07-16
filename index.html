@@ -51,10 +51,12 @@
       filter: drop-shadow(0 0 2px rgba(212, 175, 106, 0.5));
     }
 
-    body:not(.mode-html-aktif) .app-topbar {
-      position: sticky;
-      top: 0;
-      z-index: 40;
+    @media (min-height: 480px) {
+      body:not(.mode-html-aktif) .app-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+      }
     }
 
     h1 {
@@ -2733,28 +2735,16 @@ body.mode-html-aktif .hasil-kotak {
     margin-right: 0;
   }
   .hasil-wrapper {
-    width: 100vw;
-    margin: 0;
+    width: auto;
+    margin: 0 -20px;
     padding: 0;
     overflow-x: hidden;
   }
-  .hasil-kotak {
-    width: 100vw;
+  .hasil-kotak.mode-html {
+    width: 100%;
     margin: 0;
     padding: 0;
     align-items: flex-start;
-    height: auto;
-    min-height: auto;
-  }
-  .hasil-halaman,
-  .cover-kitab,
-  .pengantar-hasil,
-  .hasil-halaman-profil,
-  .hasil-halaman-pegon,
-  .hasil-halaman-daftarkode,
-  .hasil-halaman-daftarisi {
-    width: 100% !important;
-    min-height: auto;
   }
   .daftarkode-tabel-wrap {
     flex-direction: column;
@@ -3665,6 +3655,21 @@ function gotoHalamanHasil() {
         });
       });
     }
+
+    function sesuaikanKotakMobile() {
+      const kotaks = document.querySelectorAll('.hasil-kotak:not(.mode-html)');
+      if (!kotaks.length) return;
+      const lebarAsli = 624; // 165mm pada 96dpi
+      if (window.innerWidth >= lebarAsli) {
+        kotaks.forEach(k => { k.style.zoom = ''; });
+        return;
+      }
+      const skala = Math.max(0.3, Math.min(1, (window.innerWidth - 12) / lebarAsli));
+      kotaks.forEach(k => { k.style.zoom = skala; });
+    }
+    window.addEventListener('resize', sesuaikanKotakMobile);
+    window.addEventListener('load', sesuaikanKotakMobile);
+    window.addEventListener('orientationchange', () => setTimeout(sesuaikanKotakMobile, 200));
 
     // Init skala dari localStorage
     (function(){
@@ -5339,6 +5344,7 @@ html += `</div>`;
       });
       setTimeout(() => sembunyikanBorderUjung(), 100);
       setTimeout(() => sesuaikanLebarPegon(), 800);
+      setTimeout(() => sesuaikanKotakMobile(), 50);
 
       setTimeout(() => terapkanOverrideBaris(), 80);
       setTimeout(() => {
