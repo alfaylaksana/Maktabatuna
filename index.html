@@ -23,7 +23,7 @@
   background: #ffffff;
   min-height: 100vh;
   font-family: Georgia, serif;
-  padding: 40px;
+  padding: 20px;
 }
     
     body.mode-pdf * {
@@ -2735,11 +2735,18 @@ body.mode-html-aktif .hasil-kotak {
     margin-right: 0;
   }
   body {
+    padding: 0;
     overflow-x: hidden;
   }
+  .app-header {
+    margin: 0;
+  }
+  .app-nav {
+    margin: 0 0 20px 0;
+  }
   .hasil-wrapper {
-    width: auto;
-    margin: 0 -20px;
+    width: 100%;
+    margin: 0;
     padding: 0;
   }
   .hasil-kotak.mode-html {
@@ -3661,18 +3668,26 @@ function gotoHalamanHasil() {
       });
     }
 
+    let _kotakSkalaTerakhir = null;
+    let _kotakResizeTimer = null;
     function sesuaikanKotakMobile() {
       const kotaks = document.querySelectorAll('.hasil-kotak:not(.mode-html)');
       if (!kotaks.length) return;
       const lebarAsli = 624; // 165mm pada 96dpi
-      if (window.innerWidth >= lebarAsli) {
-        kotaks.forEach(k => { k.style.zoom = ''; });
-        return;
+      let skala = '';
+      if (window.innerWidth < lebarAsli) {
+        skala = Math.max(0.3, Math.min(1, (window.innerWidth - 12) / lebarAsli));
+        skala = Math.round(skala * 100) / 100;
       }
-      const skala = Math.max(0.3, Math.min(1, (window.innerWidth - 12) / lebarAsli));
+      if (skala === _kotakSkalaTerakhir) return;
+      _kotakSkalaTerakhir = skala;
       kotaks.forEach(k => { k.style.zoom = skala; });
     }
-    window.addEventListener('resize', sesuaikanKotakMobile);
+    function sesuaikanKotakMobileDebounced() {
+      clearTimeout(_kotakResizeTimer);
+      _kotakResizeTimer = setTimeout(sesuaikanKotakMobile, 200);
+    }
+    window.addEventListener('resize', sesuaikanKotakMobileDebounced);
     window.addEventListener('load', sesuaikanKotakMobile);
     window.addEventListener('orientationchange', () => setTimeout(sesuaikanKotakMobile, 200));
 
