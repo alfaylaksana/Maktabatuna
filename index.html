@@ -1986,6 +1986,16 @@ body.mode-html-aktif .hasil-kotak {
       margin: 0 !important;
       padding: 0 !important;
     }
+
+    body.mode-quick-edit .pegon:not(.tersembunyi) {
+      outline: 1.5px dashed #b08900;
+      outline-offset: 2px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    body.mode-quick-edit .pegon:not(.tersembunyi):active {
+      background: rgba(176, 137, 0, 0.15);
+    }
     
     .toggle-pegon-kolom {
   font-size: 10px;
@@ -2062,6 +2072,28 @@ body.mode-html-aktif .hasil-kotak {
       background: #2d6a4f;
       border: none;
       color: #f5f5f0;
+    }
+
+    .field-modal-pegon {
+      margin-bottom: 14px;
+    }
+    .field-modal-pegon label {
+      display: block;
+      font-size: 11px;
+      color: #40916c;
+      margin-bottom: 4px;
+    }
+    .field-modal-pegon input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      font-family: Georgia, serif;
+      font-size: 15px;
+      border: 1px solid #2d6a4f;
+      border-radius: 4px;
+      background: #ffffff;
+      color: #1a1a1a;
+      outline: none;
     }
 
     .btn-modal-batal {
@@ -2887,6 +2919,23 @@ body.mode-html-aktif .hasil-kotak {
     <div class="modal-aksi">
       <button class="btn-modal-batal" onclick="tutupModal()">Batal</button>
       <button class="btn-modal-ok" onclick="konfirmasiPindah()">Pindahkan</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlayPegon" onclick="tutupModalPegon()"></div>
+  <div class="modal-box" id="modalPegon">
+    <h3>✎ Edit Pegon</h3>
+    <div class="field-modal-pegon">
+      <label>Pegon Indonesia</label>
+      <input type="text" id="inputModalPegonIndo" dir="rtl">
+    </div>
+    <div class="field-modal-pegon">
+      <label>Pegon Jawa</label>
+      <input type="text" id="inputModalPegonJawa" dir="rtl">
+    </div>
+    <div class="modal-aksi">
+      <button class="btn-modal-batal" onclick="tutupModalPegon()">Batal</button>
+      <button class="btn-modal-ok" onclick="simpanModalPegon()">Simpan</button>
     </div>
   </div>
 
@@ -5245,8 +5294,8 @@ document.querySelectorAll('.halaman-input').forEach((hal, hIdx) => {
                     <span class="arab" data-asli="${arab}">${arabTampil}</span>
                     <div class="bawah-kata">
                       ${rujukanRowHtml}
-                      <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}">${maknaIndo||maknaJawa}</span>
-                      <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}">${maknaJawa||maknaIndo}</span>
+                      <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}" data-src-id="${item.id||''}">${maknaIndo||maknaJawa}</span>
+                      <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${maknaIndo}" data-jawa="${maknaJawa}" data-src-id="${item.id||''}">${maknaJawa||maknaIndo}</span>
                     </div>
                   </div>`;
                 });
@@ -5323,8 +5372,8 @@ if(arab&&(maknaIndo||maknaJawa))kataList.push({kode,arab,maknaIndo,maknaJawa,nom
             <span class="arab" data-asli="${item.arab}">${arabTampil}</span>
             <div class="bawah-kata">
               ${rujukanRowHtml}
-              <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}">${item.maknaIndo || item.maknaJawa}</span>
-              <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}">${item.maknaJawa || item.maknaIndo}</span>
+              <span class="pegon indo${hiddenCls}${showIndo?'':' tersembunyi'}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}" data-src-id="${item.srcId||''}">${item.maknaIndo || item.maknaJawa}</span>
+              <span class="pegon jawa${hiddenCls}${showIndo?' tersembunyi':''}" ${geserStyle} data-indo="${item.maknaIndo}" data-jawa="${item.maknaJawa}" data-src-id="${item.srcId||''}">${item.maknaJawa || item.maknaIndo}</span>
             </div>
             ${nomorHtml}
           </div>`;
@@ -5873,9 +5922,56 @@ html += `</div>`;
       try { localStorage.setItem('albidayah_admin', aktif ? '1' : '0'); } catch(e) {}
       const wrap = document.getElementById('wrapMaintenance');
       if (wrap) wrap.style.display = aktif ? '' : 'none';
+      document.body.classList.toggle('mode-quick-edit', aktif);
     }
     function initModeAdmin() {
       try { setModeAdmin(localStorage.getItem('albidayah_admin') === '1'); } catch(e) {}
+    }
+
+    // ============================================================
+    // QUICK-EDIT PEGON — aktif saat mode-quick-edit (sama dengan
+    // flag admin). Tap span .pegon → modal kecil → simpan langsung
+    // ke input tersembunyi lalu panggil simpan() yang sudah ada.
+    // ============================================================
+    let _pegonSedangEdit = null; // { srcId, tipeSumber: 'bab'|'syiir' }
+
+    document.getElementById('hasil').addEventListener('click', function(e) {
+      if (!document.body.classList.contains('mode-quick-edit')) return;
+      const span = e.target.closest('.pegon');
+      if (!span) return;
+      const srcId = span.getAttribute('data-src-id');
+      if (!srcId) { alert('Kata ini belum bisa diedit lewat quick-edit (sumbernya tidak ditemukan).'); return; }
+      bukaModalPegon(srcId, span.getAttribute('data-indo') || '', span.getAttribute('data-jawa') || '');
+    });
+
+    function bukaModalPegon(srcId, indo, jawa) {
+      _pegonSedangEdit = srcId;
+      document.getElementById('inputModalPegonIndo').value = indo;
+      document.getElementById('inputModalPegonJawa').value = jawa;
+      document.getElementById('modalOverlayPegon').style.display = 'block';
+      document.getElementById('modalPegon').style.display = 'block';
+    }
+
+    function tutupModalPegon() {
+      _pegonSedangEdit = null;
+      document.getElementById('modalOverlayPegon').style.display = 'none';
+      document.getElementById('modalPegon').style.display = 'none';
+    }
+
+    function simpanModalPegon() {
+      if (!_pegonSedangEdit) return;
+      const srcEl = document.getElementById(_pegonSedangEdit);
+      if (!srcEl) { alert('Baris sumber tidak ditemukan (mungkin sudah dihapus/diubah). Simpan dibatalkan.'); tutupModalPegon(); return; }
+      const indoBaru = document.getElementById('inputModalPegonIndo').value;
+      const jawaBaru = document.getElementById('inputModalPegonJawa').value;
+      // Baris bab biasa pakai .makna-indo/.makna-jawa, baris Syi'ir pakai .s-indo/.s-jawa
+      const inputIndo = srcEl.classList.contains('syiir-kata-item') ? srcEl.querySelector('.s-indo') : srcEl.querySelector('.makna-indo');
+      const inputJawa = srcEl.classList.contains('syiir-kata-item') ? srcEl.querySelector('.s-jawa') : srcEl.querySelector('.makna-jawa');
+      if (!inputIndo || !inputJawa) { alert('Field makna tidak ditemukan di baris sumber. Simpan dibatalkan.'); tutupModalPegon(); return; }
+      inputIndo.value = indoBaru;
+      inputJawa.value = jawaBaru;
+      tutupModalPegon();
+      simpan();
     }
 
     function init() {
