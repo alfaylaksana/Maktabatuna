@@ -4924,7 +4924,7 @@ let pengantarNav = null;
 if (htmlAdaIsi(pengantar)) {
   nomorHalIsi++;
   pengantarNav = {id: 'hasil-pengantar', nama: 'Pengantar'};
-  pengantarHtml = `<div class="pengantar-hasil" id="hasil-pengantar"><h2>Pengantar</h2><div class="pengantar-teks">${pengantar}</div><div class="nomor-halaman-hasil">${String(nomorHalIsi).replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d])}</div></div>`;
+  pengantarHtml = `<div class="pengantar-hasil" id="hasil-pengantar"><h2>Pengantar</h2><div class="pengantar-teks">${pengantar}</div></div>`;
 }
       
 document.querySelectorAll('.halaman-input').forEach((hal, hIdx) => {
