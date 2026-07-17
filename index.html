@@ -4030,13 +4030,16 @@ function hitungNomorHalaman() {
   // Menghitung nomor halaman untuk setiap .halaman-input sesuai skema:
   // Cover kitab (cover-kitab) = tidak dihitung
   // Halaman Judul & Profil Kitab = dihitung tapi nomor tidak tampil
+  // Halaman Gambar pertama (dipakai sbg cover) = dihitung tapi nomor tidak tampil
   // Semua lainnya = dihitung dan nomor tampil
   // Mengembalikan Map: halId -> { nomor, tampilNomor }
   const map = new Map();
   let counter = 0;
-  document.querySelectorAll('.halaman-input').forEach(h => {
+  const semuaHalaman = document.querySelectorAll('.halaman-input');
+  semuaHalaman.forEach((h, idx) => {
     const halId = h.id;
-    if (h.classList.contains('halaman-judul') || h.classList.contains('halaman-profil') || h.classList.contains('halaman-pengantar')) {
+    const isGambarCover = idx === 0 && h.classList.contains('halaman-gambar');
+    if (h.classList.contains('halaman-judul') || h.classList.contains('halaman-profil') || h.classList.contains('halaman-pengantar') || isGambarCover) {
       counter++;
       map.set(halId, { nomor: counter, tampilNomor: false });
     } else {
