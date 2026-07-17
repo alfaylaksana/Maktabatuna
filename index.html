@@ -2734,17 +2734,22 @@ body.mode-html-aktif .hasil-kotak {
     margin-left: 0;
     margin-right: 0;
   }
+  body {
+    overflow-x: hidden;
+  }
   .hasil-wrapper {
     width: auto;
     margin: 0 -20px;
     padding: 0;
-    overflow-x: hidden;
   }
   .hasil-kotak.mode-html {
     width: 100%;
     margin: 0;
     padding: 0;
     align-items: flex-start;
+  }
+  .hasil-kotak:not(.mode-html) {
+    margin: 0 auto;
   }
   .daftarkode-tabel-wrap {
     flex-direction: column;
