@@ -3320,7 +3320,7 @@ function togglePopupTerjemahan(el, nomorAyat) {
               if (overflow > overflowMaxReal) overflowMaxReal = overflow;
             });
           });
-          const extraLocal = overflowMaxReal > 0 ? (overflowMaxReal / skalaZoom) : 0;
+          const extraLocal = overflowMaxReal > 0 ? (overflowMaxReal / skalaZoom) * 0.4 : 0;
           aliran.style.rowGap = (baseGapLocal + extraLocal) + 'px';
         });
       });
