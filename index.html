@@ -3310,7 +3310,10 @@ function togglePopupTerjemahan(el, nomorAyat) {
         }
 
         aliranList.forEach((aliran, i) => {
-          const baseGapLocal = gapOverrideMap.hasOwnProperty(i) ? gapOverrideMap[i] : gapDefaultLocal;
+          if (gapOverrideMap.hasOwnProperty(i)) {
+            aliran.style.rowGap = gapOverrideMap[i] + 'px';
+            return;
+          }
           const skalaZoom = skalaZoomAktif(aliran);
           let overflowMaxReal = 0;
           aliran.querySelectorAll('.kata-blok').forEach(blok => {
@@ -3320,8 +3323,8 @@ function togglePopupTerjemahan(el, nomorAyat) {
               if (overflow > overflowMaxReal) overflowMaxReal = overflow;
             });
           });
-          const extraLocal = overflowMaxReal > 0 ? (overflowMaxReal / skalaZoom) * 0.6 : 0;
-          aliran.style.rowGap = (baseGapLocal + extraLocal) + 'px';
+          const extraLocal = overflowMaxReal > 0 ? (overflowMaxReal / skalaZoom) * 0.4 : 0;
+          aliran.style.rowGap = (gapDefaultLocal + extraLocal) + 'px';
         });
       });
     }
