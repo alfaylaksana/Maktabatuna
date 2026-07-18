@@ -3227,7 +3227,7 @@ function togglePopupTerjemahan(el, nomorAyat) {
       const pegonJawa = blok.querySelector('.pegon.jawa');
       const aliranIndukBlok = blok.closest('.hasil-aliran');
       const idxAliranBlok = aliranIndukBlok ? Array.from(aliranListHal).indexOf(aliranIndukBlok) : -1;
-      const pengaliDefaultBlok = pengaliDefaultPerAliran.hasOwnProperty(idxAliranBlok) ? pengaliDefaultPerAliran[idxAliranBlok] : 1.3;
+      const pengaliDefaultBlok = pengaliDefaultPerAliran.hasOwnProperty(idxAliranBlok) ? pengaliDefaultPerAliran[idxAliranBlok] : 2;
 
       if (pegonIndo) {
         let pengali = pengaliDefaultBlok;
