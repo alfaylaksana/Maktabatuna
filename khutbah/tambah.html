@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Tambah Khutbah</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f4f1; --surface:#fff; --ink:#1c2927; --muted:#5d6b68;
+  --accent:#1f5c5b; --line:#d5dcd8; --gold:#a8873a;
+  --ok:#1d6b3a; --err:#a1302a;
+  --serif:"Source Serif 4",Georgia,serif; --arab:"Amiri","Traditional Arabic",serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#121a19; --surface:#1a2523; --ink:#e6ece9; --muted:#97a5a1;
+    --accent:#6fb5b2; --line:#2c3a37; --gold:#cfae5e;
+    --ok:#6fcf97; --err:#f08a84;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--serif);font-size:18px;line-height:1.5;
+  padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);
+}
+.wrap{max-width:42rem;margin:0 auto;padding:1.25rem 1rem 3rem}
+h1{font-size:1.5rem;margin:.5rem 0 1rem}
+label{display:block;font-size:.9rem;color:var(--muted);margin:1rem 0 .3rem}
+input,textarea,button{font:inherit;font-size:1rem}
+input,textarea{
+  width:100%;padding:.7rem .85rem;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:6px;
+}
+textarea{min-height:16rem;line-height:1.7;resize:vertical}
+input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+@media (max-width:30rem){.row{grid-template-columns:1fr}}
+.btn{
+  display:block;width:100%;margin-top:1.5rem;padding:.9rem;cursor:pointer;
+  background:var(--accent);color:#fff;border:0;border-radius:6px;font-weight:600;
+}
+@media (prefers-color-scheme:dark){.btn{color:#0d1514}}
+.btn[disabled]{opacity:.55;cursor:default}
+.link{background:none;border:0;color:var(--accent);padding:.4rem 0;cursor:pointer;text-decoration:underline;font-size:.9rem}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:.9rem 1rem;margin-bottom:1.25rem}
+.box h2{font-size:1rem;margin:0 0 .4rem}
+.box p{margin:.2rem 0;font-size:.9rem;color:var(--muted)}
+#status{margin-top:1rem;min-height:1.5rem;font-size:.95rem}
+#status.ok{color:var(--ok)}
+#status.err{color:var(--err)}
+.hint{font-size:.8rem;color:var(--muted);margin:.3rem 0 0}
+textarea.arab-hint{font-family:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tambah Khutbah</h1>
+
+  <div class="box" id="tokenBox">
+    <h2>Token GitHub</h2>
+    <p id="tokenInfo"></p>
+    <div id="tokenForm">
+      <input type="password" id="token" placeholder="Tempel token (github_pat_...)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Token GitHub">
+      <button type="button" class="link" id="simpanToken">Simpan token di HP ini</button>
+    </div>
+    <button type="button" class="link" id="hapusToken" hidden>Hapus token dari HP ini</button>
+  </div>
+
+  <label for="judul">Judul</label>
+  <input id="judul" type="text" autocomplete="off">
+
+  <div class="row">
+    <div>
+      <label for="tanggal">Tanggal</label>
+      <input id="tanggal" type="date">
+    </div>
+    <div>
+      <label for="tema">Tema</label>
+      <input id="tema" type="text" list="temaList" autocomplete="off">
+      <datalist id="temaList"></datalist>
+    </div>
+  </div>
+
+  <label for="tempat">Tempat</label>
+  <input id="tempat" type="text" autocomplete="off">
+
+  <label for="isi">Naskah khutbah</label>
+  <textarea id="isi" dir="auto"></textarea>
+  <p class="hint">Pisahkan paragraf dengan satu baris kosong. Tempel teks Arab dan Indonesia seperti biasa.</p>
+
+  <button type="button" class="btn" id="simpan">Simpan ke arsip</button>
+  <div id="status" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+(function(){
+  // Pengaturan repo
+  var OWNER = 'alfaylaksana';
+  var REPO  = 'Maktabatuna';
+  var PATH  = 'khutbah/khutbah.json';
+  var BRANCH = '';   // kosong = pakai branch bawaan repo
+  var KEY = 'arsipKhutbahToken';
+
+  var $ = function(id){ return document.getElementById(id); };
+  var statusEl = $('status');
+
+  function setStatus(msg, cls){
+    statusEl.textContent = msg;
+    statusEl.className = cls || '';
+  }
+
+  // Penyimpanan token (hanya di browser ini)
+  function getToken(){
+    try { return localStorage.getItem(KEY) || ''; } catch(e){ return ''; }
+  }
+  function saveToken(t){
+    try { localStorage.setItem(KEY, t); return true; } catch(e){ return false; }
+  }
+  function clearToken(){
+    try { localStorage.removeItem(KEY); } catch(e){}
+  }
+  function showTokenState(){
+    var has = !!getToken();
+    $('tokenInfo').textContent = has ? 'Token tersimpan di HP ini.' : 'Belum ada token. Tempel sekali, lalu tersimpan di HP ini.';
+    $('tokenForm').hidden = has;
+    $('hapusToken').hidden = !has;
+  }
+  $('simpanToken').addEventListener('click', function(){
+    var t = $('token').value.trim();
+    if(!t){ setStatus('Token masih kosong.', 'err'); return; }
+    if(!saveToken(t)){ setStatus('Browser tidak mengizinkan penyimpanan. Token hanya berlaku sampai halaman ditutup.', 'err'); sessionTok = t; }
+    $('token').value = '';
+    setStatus('', '');
+    showTokenState();
+  });
+  $('hapusToken').addEventListener('click', function(){
+    clearToken(); sessionTok = ''; showTokenState();
+  });
+  var sessionTok = '';
+  function token(){ return getToken() || sessionTok; }
+
+  // Base64 <-> UTF-8
+  function b64ToText(b64){
+    var bin = atob(b64.replace(/\s/g,''));
+    var bytes = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  function textToB64(text){
+    var bytes = new TextEncoder().encode(text);
+    var bin = '';
+    for(var i=0;i<bytes.length;i+=8192){
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i+8192));
+    }
+    return btoa(bin);
+  }
+
+  function api(method, body){
+    var url = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + PATH;
+    if(method === 'GET' && BRANCH) url += '?ref=' + encodeURIComponent(BRANCH);
+    var opt = {
+      method: method,
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'Bearer ' + token(),
+        'X-GitHub-Api-Version': '2022-11-28'
+      },
+      cache: 'no-store'
+    };
+    if(body){
+      opt.headers['Content-Type'] = 'application/json';
+      opt.body = JSON.stringify(body);
+    }
+    return fetch(url, opt);
+  }
+
+  function slug(s){
+    return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50) || 'khutbah';
+  }
+  function bersihkanNaskah(s){
+    return s.replace(/\r\n?/g,'\n').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  }
+
+  function errPesan(res){
+    if(res.status === 401) return 'Token ditolak (salah atau sudah kedaluwarsa). Hapus token lalu buat yang baru.';
+    if(res.status === 403) return 'Token tidak punya izin. Pastikan Contents diset Read and write.';
+    if(res.status === 404) return 'File atau repo tidak ketemu. Cek nama repo dan pastikan token boleh mengakses Maktabatuna.';
+    if(res.status === 409 || res.status === 422) return 'Data di GitHub baru saja berubah. Tap Simpan sekali lagi.';
+    return 'Gagal (kode ' + res.status + '). Coba lagi sebentar.';
+  }
+
+  // Muat daftar tema yang sudah ada (file publik, tanpa token)
+  fetch('khutbah.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(function(arr){
+    var seen = {}, h = '';
+    arr.forEach(function(k){
+      if(k.tema && !seen[k.tema]){ seen[k.tema] = 1; h += '<option value="' + k.tema.replace(/"/g,'&quot;') + '">'; }
+    });
+    $('temaList').innerHTML = h;
+  }).catch(function(){});
+
+  // Tanggal bawaan: hari ini
+  var d = new Date();
+  $('tanggal').value = d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+
+  var sedang = false;
+  $('simpan').addEventListener('click', function(){
+    if(sedang) return;
+    var judul = $('judul').value.trim();
+    var tanggal = $('tanggal').value;
+    var tema = $('tema').value.trim();
+    var tempat = $('tempat').value.trim();
+    var isi = bersihkanNaskah($('isi').value);
+
+    if(!token()){ setStatus('Tempel token GitHub dulu di kotak paling atas.', 'err'); return; }
+    if(!judul){ setStatus('Judul belum diisi.', 'err'); return; }
+    if(!tanggal){ setStatus('Tanggal belum diisi.', 'err'); return; }
+    if(!isi){ setStatus('Naskah masih kosong.', 'err'); return; }
+
+    sedang = true; $('simpan').disabled = true;
+    setStatus('Mengambil data arsip…', '');
+
+    api('GET').then(function(res){
+      if(!res.ok) throw res;
+      return res.json();
+    }).then(function(file){
+      var arr;
+      try { arr = JSON.parse(b64ToText(file.content)); }
+      catch(e){ throw new Error('khutbah.json di GitHub bukan JSON yang valid. Perbaiki dulu file itu.'); }
+      if(!Array.isArray(arr)) throw new Error('Isi khutbah.json harus berupa daftar (diawali tanda [ ).');
+
+      var base = slug(judul) + '-' + tanggal, id = base, n = 2;
+      var ada = function(x){ return arr.some(function(k){ return k.id === x; }); };
+      while(ada(id)){ id = base + '-' + n; n++; }
+
+      arr.unshift({ id: id, judul: judul, tanggal: tanggal, tema: tema, tempat: tempat, isi: isi });
+
+      setStatus('Menyimpan ke GitHub…', '');
+      var body = {
+        message: 'Tambah khutbah: ' + judul,
+        content: textToB64(JSON.stringify(arr, null, 2) + '\n'),
+        sha: file.sha
+      };
+      if(BRANCH) body.branch = BRANCH;
+      return api('PUT', body);
+    }).then(function(res){
+      if(!res.ok) throw res;
+      setStatus('Tersimpan. Khutbah akan muncul di arsip dalam 1-2 menit.', 'ok');
+      $('judul').value = ''; $('isi').value = ''; $('tempat').value = '';
+    }).catch(function(e){
+      if(e && typeof e.status === 'number') setStatus(errPesan(e), 'err');
+      else if(e && e.message && /Failed to fetch|NetworkError/i.test(e.message)) setStatus('Tidak bisa terhubung ke GitHub. Cek koneksi internet.', 'err');
+      else setStatus((e && e.message) || 'Terjadi kesalahan.', 'err');
+    }).then(function(){
+      sedang = false; $('simpan').disabled = false;
+    });
+  });
+
+  showTokenState();
+})();
+</script>
+</body>
+</html>
