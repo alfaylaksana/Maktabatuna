@@ -54,12 +54,15 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{
 #status.ok{color:var(--ok)}
 #status.err{color:var(--err)}
 .hint{font-size:.8rem;color:var(--muted);margin:.3rem 0 0}
-textarea.arab-hint{font-family:inherit}
+.btn2{display:block;width:100%;margin-top:.6rem;padding:.8rem;cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:6px}
+.btn2.bahaya{color:var(--err);border-color:var(--err)}
+select{width:100%;padding:.7rem .85rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;font:inherit;font-size:1rem}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Tambah Khutbah</h1>
+  <h1 id="judulHalaman">Tambah Khutbah</h1>
 
   <div class="box" id="tokenBox">
     <h2>Token GitHub</h2>
@@ -70,6 +73,9 @@ textarea.arab-hint{font-family:inherit}
     </div>
     <button type="button" class="link" id="hapusToken" hidden>Hapus token dari HP ini</button>
   </div>
+
+  <label for="pilihEdit">Edit khutbah yang sudah ada</label>
+  <select id="pilihEdit"><option value="">Tidak, tambah khutbah baru</option></select>
 
   <label for="judul">Judul</label>
   <input id="judul" type="text" autocomplete="off">
@@ -94,6 +100,8 @@ textarea.arab-hint{font-family:inherit}
   <p class="hint">Pisahkan paragraf dengan satu baris kosong. Tempel teks Arab dan Indonesia seperti biasa.</p>
 
   <button type="button" class="btn" id="simpan">Simpan ke arsip</button>
+  <button type="button" class="btn2" id="batalEdit" hidden>Batal edit</button>
+  <button type="button" class="btn2 bahaya" id="hapus" hidden>Hapus khutbah ini</button>
   <div id="status" role="status" aria-live="polite"></div>
 </div>
 
@@ -194,20 +202,120 @@ textarea.arab-hint{font-family:inherit}
     return 'Gagal (kode ' + res.status + '). Coba lagi sebentar.';
   }
 
-  // Muat daftar tema yang sudah ada (file publik, tanpa token)
-  fetch('khutbah.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(function(arr){
-    var seen = {}, h = '';
+  var editId = '';
+  var daftar = [];
+
+  function isiDaftar(arr){
+    daftar = arr;
+    var sel = $('pilihEdit'), cur = editId;
+    var h = '<option value="">Tidak, tambah khutbah baru</option>';
     arr.forEach(function(k){
-      if(k.tema && !seen[k.tema]){ seen[k.tema] = 1; h += '<option value="' + k.tema.replace(/"/g,'&quot;') + '">'; }
+      h += '<option value="' + String(k.id).replace(/"/g,'&quot;') + '">' +
+           String(k.judul).replace(/</g,'&lt;') + ' (' + k.tanggal + ')</option>';
     });
-    $('temaList').innerHTML = h;
-  }).catch(function(){});
+    sel.innerHTML = h;
+    sel.value = cur;
+    var seen = {}, t = '';
+    arr.forEach(function(k){
+      if(k.tema && !seen[k.tema]){ seen[k.tema] = 1; t += '<option value="' + k.tema.replace(/"/g,'&quot;') + '">'; }
+    });
+    $('temaList').innerHTML = t;
+  }
+
+  // Daftar awal dari file publik (tanpa token)
+  fetch('khutbah.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(isiDaftar).catch(function(){});
 
   // Tanggal bawaan: hari ini
-  var d = new Date();
-  $('tanggal').value = d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+  function hariIni(){
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+  }
+  $('tanggal').value = hariIni();
+
+  function modeTambah(){
+    editId = '';
+    $('pilihEdit').value = '';
+    $('judulHalaman').textContent = 'Tambah Khutbah';
+    $('simpan').textContent = 'Simpan ke arsip';
+    $('batalEdit').hidden = true;
+    $('hapus').hidden = true;
+    $('judul').value = ''; $('isi').value = ''; $('tempat').value = ''; $('tema').value = '';
+    $('tanggal').value = hariIni();
+  }
+  function modeEdit(k){
+    editId = k.id;
+    $('judulHalaman').textContent = 'Edit Khutbah';
+    $('simpan').textContent = 'Simpan perubahan';
+    $('batalEdit').hidden = false;
+    $('hapus').hidden = false;
+    $('judul').value = k.judul || '';
+    $('tanggal').value = k.tanggal || '';
+    $('tema').value = k.tema || '';
+    $('tempat').value = k.tempat || '';
+    $('isi').value = k.isi || '';
+    window.scrollTo(0,0);
+  }
+
+  // Ambil file, ubah daftarnya, simpan kembali
+  function ubah(fnUbah, pesan){
+    return api('GET').then(function(res){
+      if(!res.ok) throw res;
+      return res.json();
+    }).then(function(file){
+      var arr;
+      try { arr = JSON.parse(b64ToText(file.content)); }
+      catch(e){ throw new Error('khutbah.json di GitHub bukan JSON yang valid. Perbaiki dulu file itu.'); }
+      if(!Array.isArray(arr)) throw new Error('Isi khutbah.json harus berupa daftar (diawali tanda [ ).');
+      arr = fnUbah(arr);
+      var body = {
+        message: pesan,
+        content: textToB64(JSON.stringify(arr, null, 2) + '\n'),
+        sha: file.sha
+      };
+      if(BRANCH) body.branch = BRANCH;
+      return api('PUT', body).then(function(res){
+        if(!res.ok) throw res;
+        return arr;
+      });
+    });
+  }
+
+  function tampilGalat(e){
+    if(e && typeof e.status === 'number') setStatus(errPesan(e), 'err');
+    else if(e && e.message && /Failed to fetch|NetworkError/i.test(e.message)) setStatus('Tidak bisa terhubung ke GitHub. Cek koneksi internet.', 'err');
+    else setStatus((e && e.message) || 'Terjadi kesalahan.', 'err');
+  }
 
   var sedang = false;
+  function mulai(msg){ sedang = true; $('simpan').disabled = true; $('hapus').disabled = true; setStatus(msg, ''); }
+  function selesai(){ sedang = false; $('simpan').disabled = false; $('hapus').disabled = false; }
+
+  // Pilih khutbah untuk diedit
+  $('pilihEdit').addEventListener('change', function(){
+    var id = $('pilihEdit').value;
+    if(!id){ modeTambah(); setStatus('', ''); return; }
+    if(!token()){ $('pilihEdit').value = editId; setStatus('Tempel token GitHub dulu di kotak paling atas.', 'err'); return; }
+    if(sedang) return;
+    mulai('Mengambil naskah…');
+    api('GET').then(function(res){
+      if(!res.ok) throw res;
+      return res.json();
+    }).then(function(file){
+      var arr = JSON.parse(b64ToText(file.content));
+      var k = arr.filter(function(x){ return x.id === id; })[0];
+      if(!k) throw new Error('Khutbah tidak ditemukan di GitHub.');
+      isiDaftar(arr);
+      modeEdit(k);
+      setStatus('', '');
+    }).catch(function(e){
+      $('pilihEdit').value = editId;
+      tampilGalat(e);
+    }).then(selesai);
+  });
+
+  $('batalEdit').addEventListener('click', function(){ modeTambah(); setStatus('', ''); });
+
+  // Simpan (baru atau perubahan)
   $('simpan').addEventListener('click', function(){
     if(sedang) return;
     var judul = $('judul').value.trim();
@@ -221,43 +329,45 @@ textarea.arab-hint{font-family:inherit}
     if(!tanggal){ setStatus('Tanggal belum diisi.', 'err'); return; }
     if(!isi){ setStatus('Naskah masih kosong.', 'err'); return; }
 
-    sedang = true; $('simpan').disabled = true;
-    setStatus('Mengambil data arsip…', '');
+    var sedangEdit = !!editId, idEdit = editId;
+    mulai(sedangEdit ? 'Menyimpan perubahan…' : 'Menyimpan ke GitHub…');
 
-    api('GET').then(function(res){
-      if(!res.ok) throw res;
-      return res.json();
-    }).then(function(file){
-      var arr;
-      try { arr = JSON.parse(b64ToText(file.content)); }
-      catch(e){ throw new Error('khutbah.json di GitHub bukan JSON yang valid. Perbaiki dulu file itu.'); }
-      if(!Array.isArray(arr)) throw new Error('Isi khutbah.json harus berupa daftar (diawali tanda [ ).');
-
+    ubah(function(arr){
+      if(sedangEdit){
+        var i = -1;
+        arr.forEach(function(k, n){ if(k.id === idEdit) i = n; });
+        if(i < 0) throw new Error('Khutbah yang diedit sudah tidak ada di GitHub.');
+        var lama = arr[i];
+        lama.judul = judul; lama.tanggal = tanggal; lama.tema = tema; lama.tempat = tempat; lama.isi = isi;
+        return arr;
+      }
       var base = slug(judul) + '-' + tanggal, id = base, n = 2;
       var ada = function(x){ return arr.some(function(k){ return k.id === x; }); };
       while(ada(id)){ id = base + '-' + n; n++; }
-
       arr.unshift({ id: id, judul: judul, tanggal: tanggal, tema: tema, tempat: tempat, isi: isi });
+      return arr;
+    }, (sedangEdit ? 'Edit khutbah: ' : 'Tambah khutbah: ') + judul).then(function(arr){
+      modeTambah();
+      isiDaftar(arr);
+      setStatus(sedangEdit ? 'Perubahan tersimpan. Tampil di arsip dalam 1-2 menit.' : 'Tersimpan. Khutbah akan muncul di arsip dalam 1-2 menit.', 'ok');
+    }).catch(tampilGalat).then(selesai);
+  });
 
-      setStatus('Menyimpan ke GitHub…', '');
-      var body = {
-        message: 'Tambah khutbah: ' + judul,
-        content: textToB64(JSON.stringify(arr, null, 2) + '\n'),
-        sha: file.sha
-      };
-      if(BRANCH) body.branch = BRANCH;
-      return api('PUT', body);
-    }).then(function(res){
-      if(!res.ok) throw res;
-      setStatus('Tersimpan. Khutbah akan muncul di arsip dalam 1-2 menit.', 'ok');
-      $('judul').value = ''; $('isi').value = ''; $('tempat').value = '';
-    }).catch(function(e){
-      if(e && typeof e.status === 'number') setStatus(errPesan(e), 'err');
-      else if(e && e.message && /Failed to fetch|NetworkError/i.test(e.message)) setStatus('Tidak bisa terhubung ke GitHub. Cek koneksi internet.', 'err');
-      else setStatus((e && e.message) || 'Terjadi kesalahan.', 'err');
-    }).then(function(){
-      sedang = false; $('simpan').disabled = false;
-    });
+  // Hapus
+  $('hapus').addEventListener('click', function(){
+    if(sedang || !editId) return;
+    var idHapus = editId, judul = $('judul').value.trim();
+    if(!confirm('Hapus khutbah "' + judul + '" dari arsip? Ini tidak bisa dibatalkan dari halaman ini.')) return;
+    mulai('Menghapus…');
+    ubah(function(arr){
+      var sisa = arr.filter(function(k){ return k.id !== idHapus; });
+      if(sisa.length === arr.length) throw new Error('Khutbah sudah tidak ada di GitHub.');
+      return sisa;
+    }, 'Hapus khutbah: ' + judul).then(function(arr){
+      modeTambah();
+      isiDaftar(arr);
+      setStatus('Khutbah dihapus. Hilang dari arsip dalam 1-2 menit.', 'ok');
+    }).catch(tampilGalat).then(selesai);
   });
 
   showTokenState();
