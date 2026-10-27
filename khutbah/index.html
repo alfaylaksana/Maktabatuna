@@ -64,6 +64,14 @@ article p.a-tengah{text-align:center}
 article p.a-kanan{text-align:right}
 article p.a-rata{text-align:justify}
 @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+.lang{display:flex;justify-content:flex-end;gap:.35rem;margin-bottom:.25rem}
+.lang button{font:inherit;font-size:.85rem;padding:.3rem .75rem;cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px}
+.lang button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.catatan{color:var(--muted);font-size:.9rem;font-style:italic;margin:0 0 1.25rem}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .tag[aria-pressed=true],
+  :root:not([data-theme="light"]) .lang button[aria-pressed=true]{color:#0d1514}
+}
 </style>
 </head>
 <body>
@@ -75,18 +83,55 @@ article p.a-rata{text-align:justify}
   var data = [];
   var query = '';
   var activeTema = '';
+  var LKEY = 'arsipKhutbahBahasa';
 
-  var bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  // Label dua bahasa. Kalau ada kata Jawa yang kurang pas, ubah di sini.
+  var T = {
+    id: {
+      judul: 'Arsip Khutbah', satuan: 'khutbah',
+      cari: 'Cari judul atau isi', cariAria: 'Cari khutbah',
+      kosong: 'Tidak ada khutbah yang cocok. Coba kata kunci lain.',
+      kembali: 'Kembali ke daftar', belumJawa: '', bahasa: 'Bahasa',
+      gagal: 'Data khutbah gagal dimuat. Pastikan file khutbah.json ada di folder yang sama dengan index.html, dan halaman dibuka lewat GitHub Pages (bukan langsung dari file).',
+      bulan: ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+    },
+    jw: {
+      judul: 'Arsip Khutbah', satuan: 'khutbah',
+      cari: 'Golek judhul utawa isi', cariAria: 'Golek khutbah',
+      kosong: 'Ora ana khutbah sing cocog. Coba tembung liyane.',
+      kembali: 'Bali menyang dhaptar',
+      belumJawa: 'Naskah basa Jawa durung ana, mula ditampilake basa Indonesia.',
+      bahasa: 'Basa',
+      gagal: 'Data khutbah ora bisa dimuat. Priksa manawa file khutbah.json ana ing folder sing padha karo index.html, lan kaca iki dibukak liwat GitHub Pages (dudu langsung saka file).',
+      bulan: ['Januari','Pébruari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','Nopember','Desember']
+    }
+  };
+
+  var lang = 'id';
+  try { var v = localStorage.getItem(LKEY); if(v === 'jw' || v === 'id') lang = v; } catch(e){}
+  document.documentElement.lang = (lang === 'jw') ? 'jv' : 'id';
+
+  function L(){ return T[lang]; }
+  function setLang(l){
+    lang = l;
+    try { localStorage.setItem(LKEY, l); } catch(e){}
+    document.documentElement.lang = (l === 'jw') ? 'jv' : 'id';
+    route(true);
+  }
+  // Pakai versi Jawa kalau ada dan bahasa Jawa dipilih, kalau tidak pakai Indonesia
+  function pilih(k, f){ return (lang === 'jw' && k[f + '_jw']) ? k[f + '_jw'] : k[f]; }
+
   function tgl(s){
     var p = String(s||'').split('-');
     if(p.length !== 3) return s || '';
-    return parseInt(p[2],10) + ' ' + bulan[parseInt(p[1],10)-1] + ' ' + p[0];
+    return parseInt(p[2],10) + ' ' + L().bulan[parseInt(p[1],10)-1] + ' ' + p[0];
   }
   function esc(s){
     return String(s==null?'':s).replace(/[&<>"']/g,function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
   }
+
   // ---- Render naskah: **tebal**, //miring//, __garis bawah__, {kiri|tengah|kanan|rata} di awal paragraf
   var AR = '\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF';
   var reArab = new RegExp('[' + AR + ']', 'g');
@@ -113,6 +158,20 @@ article p.a-rata{text-align:justify}
     }).join('');
   }
 
+  function saklar(){
+    return '<div class="lang" role="group" aria-label="' + esc(L().bahasa) + '">' +
+      '<button type="button" data-lang="id" aria-pressed="' + (lang === 'id') + '">Indonesia</button>' +
+      '<button type="button" data-lang="jw" aria-pressed="' + (lang === 'jw') + '">Jawa</button></div>';
+  }
+  function pasangSaklar(){
+    Array.prototype.forEach.call(app.querySelectorAll('.lang button'), function(b){
+      b.addEventListener('click', function(){
+        var l = b.getAttribute('data-lang');
+        if(l !== lang) setLang(l);
+      });
+    });
+  }
+
   function renderList(){
     var temaList = [];
     data.forEach(function(k){ if(k.tema && temaList.indexOf(k.tema) < 0) temaList.push(k.tema); });
@@ -121,11 +180,11 @@ article p.a-rata{text-align:justify}
     var hasil = data.filter(function(k){
       if(activeTema && k.tema !== activeTema) return false;
       if(!q) return true;
-      return (k.judul+' '+(k.tema||'')+' '+(k.tempat||'')+' '+(k.isi||'')).toLowerCase().indexOf(q) >= 0;
+      return [k.judul, k.judul_jw, k.tema, k.tempat, k.isi, k.isi_jw].join(' ').toLowerCase().indexOf(q) >= 0;
     });
 
-    var h = '<h1>Arsip Khutbah</h1><p class="sub">' + data.length + ' khutbah</p>';
-    h += '<input type="search" id="cari" placeholder="Cari judul atau isi" value="' + esc(query) + '" aria-label="Cari khutbah">';
+    var h = saklar() + '<h1>' + esc(L().judul) + '</h1><p class="sub">' + data.length + ' ' + esc(L().satuan) + '</p>';
+    h += '<input type="search" id="cari" placeholder="' + esc(L().cari) + '" value="' + esc(query) + '" aria-label="' + esc(L().cariAria) + '">';
     if(temaList.length){
       h += '<div class="tags">';
       temaList.forEach(function(t){
@@ -134,14 +193,15 @@ article p.a-rata{text-align:justify}
       h += '</div>';
     }
     if(!hasil.length){
-      h += '<p class="empty">Tidak ada khutbah yang cocok. Coba kata kunci lain.</p>';
+      h += '<p class="empty">' + esc(L().kosong) + '</p>';
     } else {
       hasil.forEach(function(k){
-        h += '<a class="item" href="#' + esc(k.id) + '"><h2>' + esc(k.judul) + '</h2>' +
+        h += '<a class="item" href="#' + esc(k.id) + '"><h2>' + esc(pilih(k, 'judul')) + '</h2>' +
              '<div class="meta">' + esc(tgl(k.tanggal)) + (k.tempat ? ', ' + esc(k.tempat) : '') + '</div></a>';
       });
     }
     app.innerHTML = h;
+    pasangSaklar();
 
     var cari = document.getElementById('cari');
     cari.addEventListener('input', function(){
@@ -160,33 +220,36 @@ article p.a-rata{text-align:justify}
     });
   }
 
-  function renderDetail(id){
+  function renderDetail(id, tetap){
     var k = data.filter(function(x){ return x.id === id; })[0];
     if(!k){ location.hash = ''; return; }
-    var paras = renderIsi(k.isi);
-    app.innerHTML = '<a class="back" href="#">Kembali ke daftar</a>' +
-      '<article><h1>' + esc(k.judul) + '</h1>' +
+    var judul = pilih(k, 'judul');
+    var catatan = (lang === 'jw' && !k.isi_jw) ? '<p class="catatan">' + esc(L().belumJawa) + '</p>' : '';
+    app.innerHTML = saklar() + '<a class="back" href="#">' + esc(L().kembali) + '</a>' +
+      '<article><h1>' + esc(judul) + '</h1>' +
       '<div class="meta">' + esc(tgl(k.tanggal)) + (k.tempat ? ', ' + esc(k.tempat) : '') + (k.tema ? ', ' + esc(k.tema) : '') + '</div>' +
-      paras + '</article>';
-    window.scrollTo(0,0);
-    document.title = k.judul + ' | Arsip Khutbah';
+      catatan + renderIsi(pilih(k, 'isi')) + '</article>';
+    pasangSaklar();
+    if(!tetap) window.scrollTo(0,0);
+    document.title = judul + ' | ' + L().judul;
   }
 
-  function route(){
+  function route(tetap){
     var id = decodeURIComponent(location.hash.replace(/^#/,''));
-    if(id){ renderDetail(id); }
-    else { document.title = 'Arsip Khutbah'; renderList(); }
+    if(id){ renderDetail(id, tetap); }
+    else { document.title = L().judul; renderList(); }
   }
 
   fetch('khutbah.json', {cache:'no-cache'})
     .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
     .then(function(j){
       data = j.slice().sort(function(a,b){ return String(b.tanggal).localeCompare(String(a.tanggal)); });
-      window.addEventListener('hashchange', route);
-      route();
+      window.addEventListener('hashchange', function(){ route(false); });
+      route(false);
     })
     .catch(function(){
-      app.innerHTML = '<p class="empty">Data khutbah gagal dimuat. Pastikan file khutbah.json ada di folder yang sama dengan index.html, dan halaman dibuka lewat GitHub Pages (bukan langsung dari file).</p>';
+      app.innerHTML = saklar() + '<p class="empty">' + esc(L().gagal) + '</p>';
+      pasangSaklar();
     });
 })();
 </script>

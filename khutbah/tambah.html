@@ -73,6 +73,10 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .isi p.a-tengah{text-align:center}
 .isi p.a-kanan{text-align:right}
 .isi p.a-rata{text-align:justify}
+.lang{display:flex;gap:.35rem;margin:1rem 0 0}
+.lang button{font:inherit;font-size:.9rem;padding:.4rem 1rem;cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px}
+.lang button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme:dark){.lang button[aria-pressed=true]{color:#0d1514}}
 </style>
 </head>
 <body>
@@ -92,7 +96,13 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <label for="pilihEdit">Edit khutbah yang sudah ada</label>
   <select id="pilihEdit"><option value="">Tidak, tambah khutbah baru</option></select>
 
-  <label for="judul">Judul</label>
+  <div class="lang" id="tabBahasa" role="group" aria-label="Bahasa naskah">
+    <button type="button" data-l="id" aria-pressed="true">Indonesia</button>
+    <button type="button" data-l="jw" aria-pressed="false">Jawa</button>
+  </div>
+  <p class="hint">Judul dan naskah di bawah mengikuti bahasa yang dipilih. Versi Indonesia wajib, versi Jawa boleh dikosongkan.</p>
+
+  <label for="judul" id="lblJudul">Judul (Indonesia)</label>
   <input id="judul" type="text" autocomplete="off">
 
   <div class="row">
@@ -110,7 +120,7 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <label for="tempat">Tempat</label>
   <input id="tempat" type="text" autocomplete="off">
 
-  <label for="isi">Naskah khutbah</label>
+  <label for="isi" id="lblIsi">Naskah khutbah (Indonesia)</label>
   <div class="toolbar" id="toolbar" role="toolbar" aria-label="Format teks">
     <button type="button" data-fmt="**" title="Tebal" aria-label="Tebal"><b>B</b></button>
     <button type="button" data-fmt="//" title="Miring" aria-label="Miring"><i>I</i></button>
@@ -322,6 +332,36 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   function keluarPratinjau(){ if(pra) aturPratinjau(false); }
   $('btnPratinjau').addEventListener('click', function(){ aturPratinjau(!pra); });
 
+  // ---- Dua bahasa (Indonesia / Jawa): satu form, dua isi
+  var bahasa = 'id';
+  var vals = {id:{judul:'',isi:''}, jw:{judul:'',isi:''}};
+  function namaBahasa(l){ return l === 'jw' ? 'Jawa' : 'Indonesia'; }
+  function tampilBahasa(){
+    $('judul').value = vals[bahasa].judul;
+    $('isi').value = vals[bahasa].isi;
+    $('lblJudul').textContent = 'Judul (' + namaBahasa(bahasa) + ')';
+    $('lblIsi').textContent = 'Naskah khutbah (' + namaBahasa(bahasa) + ')';
+    Array.prototype.forEach.call($('tabBahasa').querySelectorAll('button'), function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-l') === bahasa));
+    });
+  }
+  function simpanInput(){ vals[bahasa].judul = $('judul').value; vals[bahasa].isi = $('isi').value; }
+  function kosongkanBahasa(){ vals = {id:{judul:'',isi:''}, jw:{judul:'',isi:''}}; bahasa = 'id'; tampilBahasa(); }
+  function isiBahasa(k){
+    vals = {id:{judul:k.judul||'', isi:k.isi||''}, jw:{judul:k.judul_jw||'', isi:k.isi_jw||''}};
+    bahasa = 'id'; tampilBahasa();
+  }
+  $('tabBahasa').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b) return;
+    var l = b.getAttribute('data-l');
+    if(l === bahasa) return;
+    keluarPratinjau();
+    simpanInput();
+    bahasa = l;
+    tampilBahasa();
+  });
+
   var editId = '';
   var daftar = [];
 
@@ -360,7 +400,7 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     $('simpan').textContent = 'Simpan ke arsip';
     $('batalEdit').hidden = true;
     $('hapus').hidden = true;
-    $('judul').value = ''; $('isi').value = ''; $('tempat').value = ''; $('tema').value = '';
+    kosongkanBahasa(); $('tempat').value = ''; $('tema').value = '';
     $('tanggal').value = hariIni();
   }
   function modeEdit(k){
@@ -370,11 +410,10 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     $('simpan').textContent = 'Simpan perubahan';
     $('batalEdit').hidden = false;
     $('hapus').hidden = false;
-    $('judul').value = k.judul || '';
+    isiBahasa(k);
     $('tanggal').value = k.tanggal || '';
     $('tema').value = k.tema || '';
     $('tempat').value = k.tempat || '';
-    $('isi').value = k.isi || '';
     window.scrollTo(0,0);
   }
 
@@ -440,17 +479,24 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   // Simpan (baru atau perubahan)
   $('simpan').addEventListener('click', function(){
     if(sedang) return;
-    var judul = $('judul').value.trim();
+    simpanInput();
+    var judul = vals.id.judul.trim();
+    var judulJw = vals.jw.judul.trim();
     var tanggal = $('tanggal').value;
     var tema = $('tema').value.trim();
     var tempat = $('tempat').value.trim();
-    var isi = bersihkanNaskah($('isi').value);
+    var isi = bersihkanNaskah(vals.id.isi);
+    var isiJw = bersihkanNaskah(vals.jw.isi);
 
     if(!token()){ setStatus('Tempel token GitHub dulu di kotak paling atas.', 'err'); return; }
-    if(!judul){ setStatus('Judul belum diisi.', 'err'); return; }
+    if(!judul){ setStatus('Judul Indonesia belum diisi. Versi Indonesia wajib, versi Jawa boleh dikosongkan.', 'err'); return; }
     if(!tanggal){ setStatus('Tanggal belum diisi.', 'err'); return; }
-    if(!isi){ setStatus('Naskah masih kosong.', 'err'); return; }
+    if(!isi){ setStatus('Naskah Indonesia masih kosong. Versi Indonesia wajib, versi Jawa boleh dikosongkan.', 'err'); return; }
 
+    function terapkanJw(o){
+      if(judulJw) o.judul_jw = judulJw; else delete o.judul_jw;
+      if(isiJw) o.isi_jw = isiJw; else delete o.isi_jw;
+    }
     var sedangEdit = !!editId, idEdit = editId;
     mulai(sedangEdit ? 'Menyimpan perubahan…' : 'Menyimpan ke GitHub…');
 
@@ -460,13 +506,15 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
         arr.forEach(function(k, n){ if(k.id === idEdit) i = n; });
         if(i < 0) throw new Error('Khutbah yang diedit sudah tidak ada di GitHub.');
         var lama = arr[i];
-        lama.judul = judul; lama.tanggal = tanggal; lama.tema = tema; lama.tempat = tempat; lama.isi = isi;
+        lama.judul = judul; lama.tanggal = tanggal; lama.tema = tema; lama.tempat = tempat; lama.isi = isi; terapkanJw(lama);
         return arr;
       }
       var base = slug(judul) + '-' + tanggal, id = base, n = 2;
       var ada = function(x){ return arr.some(function(k){ return k.id === x; }); };
       while(ada(id)){ id = base + '-' + n; n++; }
-      arr.unshift({ id: id, judul: judul, tanggal: tanggal, tema: tema, tempat: tempat, isi: isi });
+      var baru = { id: id, judul: judul, tanggal: tanggal, tema: tema, tempat: tempat, isi: isi };
+      terapkanJw(baru);
+      arr.unshift(baru);
       return arr;
     }, (sedangEdit ? 'Edit khutbah: ' : 'Tambah khutbah: ') + judul).then(function(arr){
       modeTambah();
@@ -478,7 +526,8 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   // Hapus
   $('hapus').addEventListener('click', function(){
     if(sedang || !editId) return;
-    var idHapus = editId, judul = $('judul').value.trim();
+    simpanInput();
+    var idHapus = editId, judul = (vals.id.judul || vals.jw.judul).trim();
     if(!confirm('Hapus khutbah "' + judul + '" dari arsip? Ini tidak bisa dibatalkan dari halaman ini.')) return;
     mulai('Menghapus…');
     ubah(function(arr){
