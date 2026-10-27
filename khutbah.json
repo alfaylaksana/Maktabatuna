@@ -1,0 +1,18 @@
+[
+  {
+    "id": "contoh-2",
+    "judul": "Contoh Khutbah Kedua",
+    "tanggal": "2026-10-23",
+    "tema": "Akhlak",
+    "tempat": "Masjid contoh",
+    "isi": "الحمد لله رب العالمين\n\nIni paragraf kedua contoh. Ganti dengan naskah khutbah asli.\n\nParagraf Arab otomatis rata kanan, paragraf Indonesia rata kiri."
+  },
+  {
+    "id": "contoh-1",
+    "judul": "Contoh Khutbah Pertama",
+    "tanggal": "2026-10-16",
+    "tema": "Ibadah",
+    "tempat": "Majlis contoh",
+    "isi": "Ini paragraf pertama naskah contoh.\n\nParagraf dipisah dengan satu baris kosong."
+  }
+]
