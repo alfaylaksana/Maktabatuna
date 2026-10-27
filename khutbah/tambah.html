@@ -58,6 +58,21 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{
 .btn2.bahaya{color:var(--err);border-color:var(--err)}
 select{width:100%;padding:.7rem .85rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;font:inherit;font-size:1rem}
 select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.toolbar{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:.2rem 0 .5rem;position:sticky;top:0;z-index:2;background:var(--bg);padding:.35rem 0}
+.toolbar button{min-width:2.6rem;height:2.6rem;padding:0 .6rem;display:inline-flex;align-items:center;justify-content:center;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;cursor:pointer;font:inherit;font-size:1rem}
+.toolbar button:disabled{opacity:.4;cursor:default}
+.toolbar .sep{width:1px;height:1.6rem;background:var(--line);margin:0 .2rem}
+.toolbar .pra{margin-left:auto;font-size:.9rem}
+.isi{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1rem}
+.isi p{margin:0 0 1.1rem}
+.isi p.rtl{font-family:var(--arab);font-size:1.5rem;line-height:2;text-align:right}
+.isi .ar{font-family:var(--arab);font-size:1.2em;line-height:1.8}
+.isi p.rtl .ar{font-size:1em}
+.isi p.a-kiri{text-align:left}
+.isi p.a-tengah{text-align:center}
+.isi p.a-kanan{text-align:right}
+.isi p.a-rata{text-align:justify}
 </style>
 </head>
 <body>
@@ -96,7 +111,19 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <input id="tempat" type="text" autocomplete="off">
 
   <label for="isi">Naskah khutbah</label>
+  <div class="toolbar" id="toolbar" role="toolbar" aria-label="Format teks">
+    <button type="button" data-fmt="**" title="Tebal" aria-label="Tebal"><b>B</b></button>
+    <button type="button" data-fmt="//" title="Miring" aria-label="Miring"><i>I</i></button>
+    <button type="button" data-fmt="__" title="Garis bawah" aria-label="Garis bawah"><u>U</u></button>
+    <span class="sep"></span>
+    <button type="button" data-align="kiri" title="Rata kiri" aria-label="Rata kiri"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M1 3h16M1 7h10M1 11h16M1 15h10"/></svg></button>
+    <button type="button" data-align="tengah" title="Tengah" aria-label="Tengah"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M1 3h16M4 7h10M1 11h16M4 15h10"/></svg></button>
+    <button type="button" data-align="kanan" title="Rata kanan" aria-label="Rata kanan"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M1 3h16M7 7h10M1 11h16M7 15h10"/></svg></button>
+    <button type="button" data-align="rata" title="Rata kiri-kanan (justify)" aria-label="Justify"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M1 3h16M1 7h16M1 11h16M1 15h16"/></svg></button>
+    <button type="button" class="pra" id="btnPratinjau">Pratinjau</button>
+  </div>
   <textarea id="isi" dir="auto"></textarea>
+  <div class="isi" id="pratinjau" hidden></div>
   <p class="hint">Pisahkan paragraf dengan satu baris kosong. Tempel teks Arab dan Indonesia seperti biasa.</p>
 
   <button type="button" class="btn" id="simpan">Simpan ke arsip</button>
@@ -202,6 +229,99 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     return 'Gagal (kode ' + res.status + '). Coba lagi sebentar.';
   }
 
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  // ---- Render naskah: **tebal**, //miring//, __garis bawah__, {kiri|tengah|kanan|rata} di awal paragraf
+  var AR = '\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF';
+  var reArab = new RegExp('[' + AR + ']', 'g');
+  var reRun = new RegExp('[' + AR + '][' + AR + '\u0640\\s]*[' + AR + ']|[' + AR + ']', 'g');
+  function renderIsi(isi){
+    return String(isi||'').split(/\n\s*\n/).map(function(p){
+      p = p.trim();
+      if(!p) return '';
+      var align = '';
+      var m = p.match(/^\{(kiri|kanan|tengah|rata)\}\s*/);
+      if(m){ align = m[1]; p = p.slice(m[0].length); }
+      var plain = p.replace(/\*\*|\/\/|__/g, '');
+      var nAr = (plain.match(reArab) || []).length;
+      var nLa = (plain.match(/[A-Za-z]/g) || []).length;
+      var dir = (nAr + nLa === 0) ? 'auto' : (nAr > nLa ? 'rtl' : 'ltr');
+      var h = esc(p);
+      h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+           .replace(/__(.+?)__/g, '<u>$1</u>')
+           .replace(/\/\/(.+?)\/\//g, '<em>$1</em>');
+      h = h.replace(reRun, function(x){ return '<span class="ar" lang="ar">' + x + '</span>'; });
+      h = h.replace(/\n/g, '<br>');
+      var cls = (dir === 'rtl' ? 'rtl ' : '') + (align ? 'a-' + align : '');
+      return '<p dir="' + dir + '" class="' + cls.trim() + '">' + h + '</p>';
+    }).join('');
+  }
+
+  // ---- Toolbar format
+  function bungkus(m){
+    var ta = $('isi'), v = ta.value, s = ta.selectionStart, e = ta.selectionEnd, L = m.length;
+    var sel = v.slice(s, e);
+    if(s >= L && v.slice(s-L, s) === m && v.slice(e, e+L) === m){
+      ta.value = v.slice(0, s-L) + sel + v.slice(e+L);
+      ta.setSelectionRange(s-L, e-L);
+    } else if(sel.length >= 2*L && sel.slice(0, L) === m && sel.slice(-L) === m){
+      var inner = sel.slice(L, -L);
+      ta.value = v.slice(0, s) + inner + v.slice(e);
+      ta.setSelectionRange(s, s + inner.length);
+    } else {
+      ta.value = v.slice(0, s) + m + sel + m + v.slice(e);
+      ta.setSelectionRange(s + L, e + L);
+    }
+    ta.focus();
+  }
+  function rata(a){
+    var ta = $('isi'), v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+    var i = s > 1 ? v.lastIndexOf('\n\n', s - 2) : -1;
+    var pStart = i < 0 ? 0 : i + 2;
+    var j = v.indexOf('\n\n', e);
+    var pEnd = j < 0 ? v.length : j;
+    if(pEnd < pStart) pEnd = pStart;
+    var re = /^\{(kiri|kanan|tengah|rata)\}[ ]?/;
+    var segs = v.slice(pStart, pEnd).split('\n\n');
+    var semua = segs.every(function(g){
+      if(!g.trim()) return true;
+      var m = g.match(re);
+      return !!m && m[1] === a;
+    });
+    var baru = segs.map(function(g){
+      if(!g.trim()) return g;
+      var t = g.replace(re, '');
+      return semua ? t : '{' + a + '} ' + t;
+    }).join('\n\n');
+    ta.value = v.slice(0, pStart) + baru + v.slice(pEnd);
+    ta.setSelectionRange(pStart + baru.length, pStart + baru.length);
+    ta.focus();
+  }
+  $('toolbar').addEventListener('mousedown', function(e){
+    if(e.target.closest && e.target.closest('button')) e.preventDefault();
+  });
+  $('toolbar').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b || b.disabled) return;
+    if(b.getAttribute('data-fmt')) bungkus(b.getAttribute('data-fmt'));
+    else if(b.getAttribute('data-align')) rata(b.getAttribute('data-align'));
+  });
+
+  var pra = false;
+  function aturPratinjau(on){
+    pra = on;
+    $('pratinjau').hidden = !on;
+    $('isi').hidden = on;
+    $('btnPratinjau').textContent = on ? 'Kembali ke naskah' : 'Pratinjau';
+    Array.prototype.forEach.call($('toolbar').querySelectorAll('[data-fmt],[data-align]'), function(b){ b.disabled = on; });
+    if(on) $('pratinjau').innerHTML = renderIsi(bersihkanNaskah($('isi').value)) || '<p>Naskah masih kosong.</p>';
+  }
+  function keluarPratinjau(){ if(pra) aturPratinjau(false); }
+  $('btnPratinjau').addEventListener('click', function(){ aturPratinjau(!pra); });
+
   var editId = '';
   var daftar = [];
 
@@ -233,6 +353,7 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   $('tanggal').value = hariIni();
 
   function modeTambah(){
+    keluarPratinjau();
     editId = '';
     $('pilihEdit').value = '';
     $('judulHalaman').textContent = 'Tambah Khutbah';
@@ -243,6 +364,7 @@ select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     $('tanggal').value = hariIni();
   }
   function modeEdit(k){
+    keluarPratinjau();
     editId = k.id;
     $('judulHalaman').textContent = 'Edit Khutbah';
     $('simpan').textContent = 'Simpan perubahan';

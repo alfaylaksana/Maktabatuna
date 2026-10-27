@@ -56,7 +56,13 @@ input[type=search]:focus-visible,a:focus-visible,button:focus-visible{outline:2p
 article h1{font-size:1.5rem}
 article .meta{margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:2px solid var(--gold)}
 article p{margin:0 0 1.1rem}
-article p[dir=rtl]{font-family:var(--arab);font-size:1.5rem;line-height:2;text-align:right}
+article p.rtl{font-family:var(--arab);font-size:1.5rem;line-height:2;text-align:right}
+article .ar{font-family:var(--arab);font-size:1.2em;line-height:1.8}
+article p.rtl .ar{font-size:1em}
+article p.a-kiri{text-align:left}
+article p.a-tengah{text-align:center}
+article p.a-kanan{text-align:right}
+article p.a-rata{text-align:justify}
 @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
 </style>
 </head>
@@ -81,7 +87,31 @@ article p[dir=rtl]{font-family:var(--arab);font-size:1.5rem;line-height:2;text-a
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
     });
   }
-  function hasArabic(s){ return /[\u0600-\u06FF]/.test(s); }
+  // ---- Render naskah: **tebal**, //miring//, __garis bawah__, {kiri|tengah|kanan|rata} di awal paragraf
+  var AR = '\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF';
+  var reArab = new RegExp('[' + AR + ']', 'g');
+  var reRun = new RegExp('[' + AR + '][' + AR + '\u0640\\s]*[' + AR + ']|[' + AR + ']', 'g');
+  function renderIsi(isi){
+    return String(isi||'').split(/\n\s*\n/).map(function(p){
+      p = p.trim();
+      if(!p) return '';
+      var align = '';
+      var m = p.match(/^\{(kiri|kanan|tengah|rata)\}\s*/);
+      if(m){ align = m[1]; p = p.slice(m[0].length); }
+      var plain = p.replace(/\*\*|\/\/|__/g, '');
+      var nAr = (plain.match(reArab) || []).length;
+      var nLa = (plain.match(/[A-Za-z]/g) || []).length;
+      var dir = (nAr + nLa === 0) ? 'auto' : (nAr > nLa ? 'rtl' : 'ltr');
+      var h = esc(p);
+      h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+           .replace(/__(.+?)__/g, '<u>$1</u>')
+           .replace(/\/\/(.+?)\/\//g, '<em>$1</em>');
+      h = h.replace(reRun, function(x){ return '<span class="ar" lang="ar">' + x + '</span>'; });
+      h = h.replace(/\n/g, '<br>');
+      var cls = (dir === 'rtl' ? 'rtl ' : '') + (align ? 'a-' + align : '');
+      return '<p dir="' + dir + '" class="' + cls.trim() + '">' + h + '</p>';
+    }).join('');
+  }
 
   function renderList(){
     var temaList = [];
@@ -133,10 +163,7 @@ article p[dir=rtl]{font-family:var(--arab);font-size:1.5rem;line-height:2;text-a
   function renderDetail(id){
     var k = data.filter(function(x){ return x.id === id; })[0];
     if(!k){ location.hash = ''; return; }
-    var paras = String(k.isi||'').split(/\n\s*\n/).map(function(p){
-      p = p.trim();
-      return p ? '<p dir="' + (hasArabic(p) ? 'rtl' : 'auto') + '">' + esc(p).replace(/\n/g,'<br>') + '</p>' : '';
-    }).join('');
+    var paras = renderIsi(k.isi);
     app.innerHTML = '<a class="back" href="#">Kembali ke daftar</a>' +
       '<article><h1>' + esc(k.judul) + '</h1>' +
       '<div class="meta">' + esc(tgl(k.tanggal)) + (k.tempat ? ', ' + esc(k.tempat) : '') + (k.tema ? ', ' + esc(k.tema) : '') + '</div>' +
