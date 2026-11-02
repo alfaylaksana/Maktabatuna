@@ -3,7 +3,10 @@
 // Data kitab sendiri (Firestore) ditangani terpisah lewat offline
 // persistence Firestore, bukan lewat file ini.
 
-const CACHE_NAME = 'albidayah-shell-v1';
+// Awalan nama cache — pembersihan hanya menyentuh cache app ini (cache browser dipakai bersama
+// oleh semua app di alfaylaksana.github.io: Maktabah, Flashayat, Munawwaroh, dll.)
+const CACHE_PREFIX = 'albidayah-';
+const CACHE_NAME = CACHE_PREFIX + 'shell-v1';
 
 const APP_SHELL = [
   './',
@@ -35,7 +38,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
